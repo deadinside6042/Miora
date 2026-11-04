@@ -14,7 +14,18 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
-        buildConfigField("String", "AI_BASE_URL", "\"http://192.168.1.81:8000/\"")
+        buildConfigField("String", "AI_BASE_URL", "\"https://moira-yjfu.onrender.com/\"")
+    }
+
+    buildTypes {
+        getByName("debug") {
+            // Default to production HTTPS backend; change to "http://10.0.2.2:8000/" when running local Python backend
+            buildConfigField("String", "AI_BASE_URL", "\"https://moira-yjfu.onrender.com/\"")
+        }
+        getByName("release") {
+            buildConfigField("String", "AI_BASE_URL", "\"https://moira-yjfu.onrender.com/\"")
+            isMinifyEnabled = false
+        }
     }
 
     buildFeatures {
