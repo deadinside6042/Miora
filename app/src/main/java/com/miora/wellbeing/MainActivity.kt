@@ -316,6 +316,88 @@ fun SignInScreen(email: String, onEmail: (String) -> Unit, password: String, onP
     }
 }
 
+
+data class MioraProfile(val preferredName: String, val memorySummary: String)
+
+private fun getMiora(path: String, token: String): Pair<Int, String> {
+    val connection = (URL(BuildConfig.AI_BASE_URL + path).openConnection() as HttpURLConnection)
+    connection.requestMethod = "GET"
+    connection.connectTimeout = 15000
+    connection.readTimeout = 20000
+    connection.setRequestProperty("Authorization", "Bearer $token")
+    val code = connection.responseCode
+    val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+    val body = stream?.bufferedReader()?.use { it.readText() } ?: ""
+    connection.disconnect()
+    return code to body
+}
+
+private fun putMiora(path: String, payload: JSONObject, token: String): Pair<Int, String> {
+    val connection = (URL(BuildConfig.AI_BASE_URL + path).openConnection() as HttpURLConnection)
+    connection.requestMethod = "PUT"
+    connection.connectTimeout = 15000
+    connection.readTimeout = 20000
+    connection.doOutput = true
+    connection.setRequestProperty("Content-Type", "application/json")
+    connection.setRequestProperty("Authorization", "Bearer $token")
+    connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+    val code = connection.responseCode
+    val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+    val body = stream?.bufferedReader()?.use { it.readText() } ?: ""
+    connection.disconnect()
+    return code to body
+}
+
+suspend fun loadMioraProfile(token: String): MioraProfile? = withContext(Dispatchers.IO) {
+    try {
+        val (code, body) = getMiora("profile", token)
+        if (code !in 200..299) null else {
+            val json = JSONObject(body)
+            MioraProfile(json.optString("preferred_name"), json.optString("memory_summary"))
+        }
+    } catch (_: Exception) { null }
+}
+
+suspend fun saveMioraProfile(token: String, name: String, memory: String): Boolean = withContext(Dispatchers.IO) {
+    try {
+        val payload = JSONObject().put("preferred_name", name).put("memory_summary", memory)
+        putMiora("profile", payload, token).first in 200..299
+    } catch (_: Exception) { false }
+}
+
+suspend fun loadMioraHistory(token: String, conversationId: String): List<ChatLine>? = withContext(Dispatchers.IO) {
+    if (conversationId.isBlank()) return@withContext null
+    try {
+        val (code, body) = getMiora("conversations/$conversationId/messages", token)
+        if (code !in 200..299) null else {
+            val json = JSONObject(body)
+            val array = json.optJSONArray("messages") ?: JSONArray()
+            val loaded = mutableListOf<ChatLine>()
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                val role = item.optString("role")
+                val content = item.optString("content")
+                if ((role == "user" || role == "assistant") && content.isNotBlank()) loaded.add(ChatLine(role, content))
+            }
+            loaded
+        }
+    } catch (_: Exception) { null }
+}
+
+@Composable
+fun ProfileScreen(name: String, onName: (String) -> Unit, memory: String, onMemory: (String) -> Unit, onSave: () -> Unit, notice: String) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 18.dp)) {
+        Header("Your information", "Profile & memory", "Choose what Miora can remember between conversations.")
+        Text("What should Miora call you?", Modifier.padding(horizontal = 22.dp), color = Ink, fontWeight = FontWeight.SemiBold)
+        OutlinedTextField(value = name, onValueChange = onName, modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp), singleLine = true, placeholder = { Text("Your preferred name") })
+        Text("Things you want Miora to remember", Modifier.padding(horizontal = 22.dp, vertical = 8.dp), color = Ink, fontWeight = FontWeight.SemiBold)
+        OutlinedTextField(value = memory, onValueChange = onMemory, modifier = Modifier.fillMaxWidth().heightIn(min = 150.dp).padding(horizontal = 18.dp, vertical = 8.dp), placeholder = { Text("Add context, goals, preferences, or things you want to pick up next time…") })
+        Text("Only save information you choose to share here. You can edit or erase it at any time. Your journal is separate and is never sent to Miora.", Modifier.padding(horizontal = 22.dp, vertical = 8.dp), color = Muted, fontSize = 12.sp)
+        if (notice.isNotBlank()) Text(notice, Modifier.padding(horizontal = 22.dp, vertical = 8.dp), color = Teal, fontSize = 13.sp)
+        Button(onClick = onSave, modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(52.dp), shape = RoundedCornerShape(16.dp)) { Text("Save profile and memory") }
+    }
+}
+
 data class MioraSession(val accessToken: String, val refreshToken: String)
 data class MioraChatResult(val reply: String, val conversationId: String, val accessToken: String, val refreshToken: String)
 
