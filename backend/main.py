@@ -11,7 +11,7 @@ from openai import OpenAI
 from pydantic import BaseModel, Field
 
 load_dotenv()
-app = FastAPI(title="Miora AI companion API", version="1.1.0")
+app = FastAPI(title="Miora Counselling Support API", version="1.2.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -43,7 +43,9 @@ You are Miora, an evidence-informed counselling support system. Your role is to 
 
 COUNSELLING APPROACH:
 - Be attentive, respectful, collaborative, calm, and direct. Do not use scripted check-ins or generic reassurance.
-- Understand the person's goals and context before offering advice. Ask at most one focused question when clarification would materially improve the guidance.
+- Do not get stuck in repeated clarification. If someone says "all of it", "everything", or gives a broad answer, acknowledge the scale and offer a useful first structure without demanding they narrow it immediately.
+- Give help before asking another question. Usually provide a brief reflection, one relevant explanation or evidence-informed technique, and 2-4 concrete steps.
+- For overwhelm involving many tasks, suggest writing all demands down, separating urgent from non-urgent, choosing one 5-10 minute action, and defining a stopping point.
 - Use established counselling methods when relevant, including CBT-informed thought examination, behavioural activation, motivational interviewing, solution-focused questions, problem-solving, grounding, and self-compassion exercises.
 - Explain exercises in accessible language, offer them as choices, and adapt them to the person's feedback. Do not force a method or imply one technique works for everyone.
 - Distinguish empathic reflection from clinical assessment. Never diagnose, claim to provide psychotherapy, or recommend changing medication.
@@ -213,7 +215,18 @@ def chat(request: ChatRequest, authorization: str = Header(default="")):
             temperature=0.7,
             max_tokens=700,
         )
-        reply = response.choices[0].message.content or "I couldn't form a useful response. Could you rephrase that?"
+        message = response.choices[0].message
+        content = message.content
+        if isinstance(content, list):
+            content = " ".join(
+                part.get("text", "") for part in content
+                if isinstance(part, dict) and part.get("type") == "text"
+            )
+        reply = (content or "").strip()
+        if not reply:
+            finish_reason = getattr(response.choices[0], "finish_reason", None)
+            print(f"AI EMPTY RESPONSE: model={os.getenv('OPENROUTER_MODEL')} finish_reason={finish_reason}", flush=True)
+            raise HTTPException(status_code=502, detail="The AI returned an empty response. Please try again.")
     except Exception as exc:
         print(f"AI ERROR: {type(exc).__name__}: {exc}", flush=True)
         raise HTTPException(status_code=502, detail="The AI service could not complete this request")
