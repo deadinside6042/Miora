@@ -46,6 +46,11 @@ data class ChatLine(val role: String, val text: String)
 @Composable
 fun MioraApp(context: Context) {
     val prefs = remember { context.getSharedPreferences("miora", Context.MODE_PRIVATE) }
+    var accessToken by remember { mutableStateOf(prefs.getString("access_token", "") ?: "") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var authError by remember { mutableStateOf("") }
+    var conversationId by remember { mutableStateOf(prefs.getString("conversation_id", "") ?: "") }
     var tab by remember { mutableStateOf("Home") }
     var mood by remember { mutableStateOf(prefs.getString("mood", "") ?: "") }
     var journal by remember { mutableStateOf(prefs.getString("journal", "") ?: "") }
@@ -62,7 +67,22 @@ fun MioraApp(context: Context) {
             surface = Color.White, onSurface = Ink, secondary = Peach
         )
     ) {
-        Scaffold(
+        if (accessToken.isBlank()) {
+            SignInScreen(email, { email = it }, password, { password = it }, busy, authError) {
+                busy = true
+                authError = ""
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) { loginMiora(email.trim(), password) }
+                    if (result.first != null) {
+                        accessToken = result.first!!
+                        prefs.edit().putString("access_token", accessToken).apply()
+                        conversationId = ""
+                        prefs.edit().remove("conversation_id").apply()
+                    } else authError = result.second
+                    busy = false
+                }
+            }
+        } else Scaffold(
             containerColor = Cream,
             bottomBar = {
                 NavigationBar(containerColor = Color.White) {
@@ -105,8 +125,12 @@ fun MioraApp(context: Context) {
                         message = ""
                         busy = true
                         scope.launch {
-                            val answer = withContext(Dispatchers.IO) { askMiora(userText, chat) }
-                            chat = chat + ChatLine("assistant", answer)
+                            val result = withContext(Dispatchers.IO) { askMiora(userText, chat, accessToken, conversationId) }
+                            chat = chat + ChatLine("assistant", result.first)
+                            if (result.second.isNotBlank()) {
+                                conversationId = result.second
+                                prefs.edit().putString("conversation_id", conversationId).apply()
+                            }
                             busy = false
                         }
                     })
@@ -263,7 +287,51 @@ fun CompanionScreen(chat: List<ChatLine>, message: String, onMessage: (String) -
     }
 }
 
-suspend fun askMiora(text: String, history: List<ChatLine>): String {
+@Composable
+fun SignInScreen(email: String, onEmail: (String) -> Unit, password: String, onPassword: (String) -> Unit, busy: Boolean, error: String, onSignIn: () -> Unit) {
+    Column(Modifier.fillMaxSize().background(Cream).padding(24.dp), verticalArrangement = Arrangement.Center) {
+        Text("Miora", color = Ink, fontSize = 38.sp, fontWeight = FontWeight.Bold)
+        Text("A little space for you.", color = Muted, fontSize = 16.sp)
+        Spacer(Modifier.height(28.dp))
+        Text("Sign in", color = Ink, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(14.dp))
+        OutlinedTextField(value = email, onValueChange = onEmail, modifier = Modifier.fillMaxWidth(), label = { Text("Email") }, singleLine = true)
+        Spacer(Modifier.height(10.dp))
+        OutlinedTextField(value = password, onValueChange = onPassword, modifier = Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true)
+        if (error.isNotBlank()) {
+            Spacer(Modifier.height(10.dp))
+            Text(error, color = MaterialTheme.colorScheme.error)
+        }
+        Spacer(Modifier.height(18.dp))
+        Button(onClick = onSignIn, enabled = email.isNotBlank() && password.isNotBlank() && !busy, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+            Text(if (busy) "Signing in…" else "Sign in")
+        }
+        Spacer(Modifier.height(12.dp))
+        Text("Miora is invite-only. Ask your Miora administrator for an account.", color = Muted, fontSize = 12.sp)
+    }
+}
+
+suspend fun loginMiora(email: String, password: String): Pair<String?, String> {
+    return try {
+        val connection = (URL(BuildConfig.AI_BASE_URL + "auth/login").openConnection() as HttpURLConnection)
+        connection.requestMethod = "POST"
+        connection.connectTimeout = 15000
+        connection.readTimeout = 20000
+        connection.doOutput = true
+        connection.setRequestProperty("Content-Type", "application/json")
+        val payload = JSONObject().put("email", email).put("password", password)
+        connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+        val code = connection.responseCode
+        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+        val body = stream.bufferedReader().use { it.readText() }
+        if (code in 200..299) JSONObject(body).optString("access_token") to ""
+        else null to "Sign-in failed. Check your email and password, then try again."
+    } catch (_: Exception) {
+        null to "Could not reach Miora. Please try again."
+    }
+}
+
+suspend fun askMiora(text: String, history: List<ChatLine>, token: String, conversationId: String): Pair<String, String> {
     return try {
         val connection = (URL(BuildConfig.AI_BASE_URL + "chat").openConnection() as HttpURLConnection)
         connection.requestMethod = "POST"
@@ -271,16 +339,21 @@ suspend fun askMiora(text: String, history: List<ChatLine>): String {
         connection.readTimeout = 45000
         connection.doOutput = true
         connection.setRequestProperty("Content-Type", "application/json")
+        connection.setRequestProperty("Authorization", "Bearer $token")
         val messages = JSONArray()
         history.takeLast(12).forEach { messages.put(JSONObject().put("role", it.role).put("content", it.text)) }
         val payload = JSONObject().put("messages", messages)
+        if (conversationId.isNotBlank()) payload.put("conversation_id", conversationId)
         connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
         val stream = if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream
         val response = stream.bufferedReader().use { it.readText() }
         if (connection.responseCode !in 200..299) {
-            "I’m having trouble connecting right now. Please try again in a moment."
-        } else JSONObject(response).optString("reply", "I’m here with you. Could you tell me a little more?")
+            "I’m having trouble connecting right now. Please try again in a moment." to conversationId
+        } else {
+            val json = JSONObject(response)
+            json.optString("reply", "I’m here with you. Could you tell me a little more?") to json.optString("conversation_id", conversationId)
+        }
     } catch (e: Exception) {
-        "I can’t reach the AI service yet. Please check that the Miora backend is running and the app’s server address is configured."
+        "I can’t reach the AI service yet. Please try again in a moment." to conversationId
     }
 }
