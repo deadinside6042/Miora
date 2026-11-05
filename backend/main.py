@@ -213,7 +213,7 @@ def chat(request: ChatRequest, authorization: str = Header(default="")):
             messages=[{"role": "system", "content": system_content},
                       *[m.model_dump() for m in request.messages]],
             temperature=0.7,
-            max_tokens=700,
+            max_tokens=2000,
         )
         message = response.choices[0].message
         content = message.content
