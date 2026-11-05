@@ -93,8 +93,6 @@ fun MioraApp(context: Context) {
                         accessToken = result.first!!
                         refreshToken = result.third
                         prefs.edit().putString("access_token", accessToken).putString("refresh_token", refreshToken).apply()
-                        conversationId = ""
-                        prefs.edit().remove("conversation_id").apply()
                     } else authError = result.second
                     busy = false
                 }
