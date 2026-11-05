@@ -27,8 +27,13 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # GitHub's Ubuntu runner already includes the Android SDK.
+      # Avoid setup-android: it requests the retired SDK "tools" package.
+      - name: Verify Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          test -d "$ANDROID_HOME"
+          ls "$ANDROID_HOME"
 
       - name: Build installable APK
         run: ./gradlew --no-daemon assembleDebug
