@@ -34,6 +34,9 @@ class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=256)
 
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(min_length=1, max_length=2048)
+
 SYSTEM_PROMPT = """
 You are Miora, a warm, grounded, thoughtful emotional-wellness companion.
 Your purpose is to have a natural, meaningful conversation, not to run a repetitive check-in script.
@@ -109,6 +112,18 @@ def login(request: LoginRequest):
         "refresh_token": result.get("refresh_token"),
         "expires_in": result.get("expires_in"),
         "user": {"id": result.get("user", {}).get("id"), "email": result.get("user", {}).get("email")}
+    }
+
+@app.post("/auth/refresh")
+def refresh_session(request: RefreshRequest):
+    result = supabase_request(
+        "/auth/v1/token?grant_type=refresh_token", method="POST",
+        body={"refresh_token": request.refresh_token}
+    )
+    return {
+        "access_token": result.get("access_token"),
+        "refresh_token": result.get("refresh_token"),
+        "expires_in": result.get("expires_in"),
     }
 
 @app.post("/chat")
