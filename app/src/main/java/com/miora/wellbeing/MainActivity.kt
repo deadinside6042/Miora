@@ -47,6 +47,7 @@ data class ChatLine(val role: String, val text: String)
 fun MioraApp(context: Context) {
     val prefs = remember { context.getSharedPreferences("miora", Context.MODE_PRIVATE) }
     var accessToken by remember { mutableStateOf(prefs.getString("access_token", "") ?: "") }
+    var refreshToken by remember { mutableStateOf(prefs.getString("refresh_token", "") ?: "") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var authError by remember { mutableStateOf("") }
@@ -75,7 +76,8 @@ fun MioraApp(context: Context) {
                     val result = withContext(Dispatchers.IO) { loginMiora(email.trim(), password) }
                     if (result.first != null) {
                         accessToken = result.first!!
-                        prefs.edit().putString("access_token", accessToken).apply()
+                        refreshToken = result.third
+                        prefs.edit().putString("access_token", accessToken).putString("refresh_token", refreshToken).apply()
                         conversationId = ""
                         prefs.edit().remove("conversation_id").apply()
                     } else authError = result.second
@@ -125,10 +127,13 @@ fun MioraApp(context: Context) {
                         message = ""
                         busy = true
                         scope.launch {
-                            val result = withContext(Dispatchers.IO) { askMiora(userText, chat, accessToken, conversationId) }
-                            chat = chat + ChatLine("assistant", result.first)
-                            if (result.second.isNotBlank()) {
-                                conversationId = result.second
+                            val result = withContext(Dispatchers.IO) { askMiora(userText, chat, accessToken, refreshToken, conversationId) }
+                            accessToken = result.accessToken
+                            refreshToken = result.refreshToken
+                            prefs.edit().putString("access_token", accessToken).putString("refresh_token", refreshToken).apply()
+                            chat = chat + ChatLine("assistant", result.reply)
+                            if (result.conversationId.isNotBlank()) {
+                                conversationId = result.conversationId
                                 prefs.edit().putString("conversation_id", conversationId).apply()
                             }
                             busy = false
@@ -311,49 +316,86 @@ fun SignInScreen(email: String, onEmail: (String) -> Unit, password: String, onP
     }
 }
 
-suspend fun loginMiora(email: String, password: String): Pair<String?, String> {
+data class MioraSession(val accessToken: String, val refreshToken: String)
+data class MioraChatResult(val reply: String, val conversationId: String, val accessToken: String, val refreshToken: String)
+
+private fun postMiora(path: String, payload: JSONObject, token: String = ""): Pair<Int, String> {
+    val connection = (URL(BuildConfig.AI_BASE_URL + path).openConnection() as HttpURLConnection)
+    connection.requestMethod = "POST"
+    connection.connectTimeout = 15000
+    connection.readTimeout = 45000
+    connection.doOutput = true
+    connection.setRequestProperty("Content-Type", "application/json")
+    if (token.isNotBlank()) connection.setRequestProperty("Authorization", "Bearer $token")
+    connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+    val code = connection.responseCode
+    val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+    val body = stream?.bufferedReader()?.use { it.readText() } ?: ""
+    connection.disconnect()
+    return code to body
+}
+
+suspend fun loginMiora(email: String, password: String): Triple<String?, String, String> {
     return try {
-        val connection = (URL(BuildConfig.AI_BASE_URL + "auth/login").openConnection() as HttpURLConnection)
-        connection.requestMethod = "POST"
-        connection.connectTimeout = 15000
-        connection.readTimeout = 20000
-        connection.doOutput = true
-        connection.setRequestProperty("Content-Type", "application/json")
-        val payload = JSONObject().put("email", email).put("password", password)
-        connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-        val code = connection.responseCode
-        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-        val body = stream.bufferedReader().use { it.readText() }
-        if (code in 200..299) JSONObject(body).optString("access_token") to ""
-        else null to "Sign-in failed. Check your email and password, then try again."
+        val (code, body) = withContext(Dispatchers.IO) {
+            postMiora("auth/login", JSONObject().put("email", email).put("password", password))
+        }
+        if (code in 200..299) {
+            val json = JSONObject(body)
+            Triple(json.optString("access_token"), "", json.optString("refresh_token"))
+        } else Triple(null, "Sign-in failed. Check your email and password, then try again.", "")
     } catch (_: Exception) {
-        null to "Could not reach Miora. Please try again."
+        Triple(null, "Could not reach Miora. Please try again.", "")
     }
 }
 
-suspend fun askMiora(text: String, history: List<ChatLine>, token: String, conversationId: String): Pair<String, String> {
+private suspend fun refreshMioraSession(refreshToken: String): MioraSession? {
+    if (refreshToken.isBlank()) return null
     return try {
-        val connection = (URL(BuildConfig.AI_BASE_URL + "chat").openConnection() as HttpURLConnection)
-        connection.requestMethod = "POST"
-        connection.connectTimeout = 15000
-        connection.readTimeout = 45000
-        connection.doOutput = true
-        connection.setRequestProperty("Content-Type", "application/json")
-        connection.setRequestProperty("Authorization", "Bearer $token")
-        val messages = JSONArray()
-        history.takeLast(12).forEach { messages.put(JSONObject().put("role", it.role).put("content", it.text)) }
-        val payload = JSONObject().put("messages", messages)
-        if (conversationId.isNotBlank()) payload.put("conversation_id", conversationId)
-        connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-        val stream = if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream
-        val response = stream.bufferedReader().use { it.readText() }
-        if (connection.responseCode !in 200..299) {
-            "I’m having trouble connecting right now. Please try again in a moment." to conversationId
+        val (code, body) = withContext(Dispatchers.IO) {
+            postMiora("auth/refresh", JSONObject().put("refresh_token", refreshToken))
+        }
+        if (code in 200..299) {
+            val json = JSONObject(body)
+            MioraSession(json.optString("access_token"), json.optString("refresh_token"))
+        } else null
+    } catch (_: Exception) { null }
+}
+
+suspend fun askMiora(text: String, history: List<ChatLine>, token: String, refreshToken: String, conversationId: String): MioraChatResult {
+    var activeAccess = token
+    var activeRefresh = refreshToken
+    return try {
+        suspend fun sendChat(): Pair<Int, String> = withContext(Dispatchers.IO) {
+            val messages = JSONArray()
+            history.takeLast(12).forEach { messages.put(JSONObject().put("role", it.role).put("content", it.text)) }
+            val payload = JSONObject().put("messages", messages)
+            if (conversationId.isNotBlank()) payload.put("conversation_id", conversationId)
+            postMiora("chat", payload, activeAccess)
+        }
+
+        var (code, response) = sendChat()
+        if (code == 401 || code == 403) {
+            val refreshed = refreshMioraSession(activeRefresh)
+            if (refreshed != null && refreshed.accessToken.isNotBlank()) {
+                activeAccess = refreshed.accessToken
+                activeRefresh = refreshed.refreshToken
+                val retry = sendChat()
+                code = retry.first
+                response = retry.second
+            }
+        }
+        if (code !in 200..299) {
+            MioraChatResult("I’m having trouble connecting right now. Please sign in again if this continues.", conversationId, activeAccess, activeRefresh)
         } else {
             val json = JSONObject(response)
-            json.optString("reply", "I’m here with you. Could you tell me a little more?") to json.optString("conversation_id", conversationId)
+            MioraChatResult(
+                json.optString("reply", "I’m here with you. Could you tell me a little more?"),
+                json.optString("conversation_id", conversationId),
+                activeAccess, activeRefresh
+            )
         }
-    } catch (e: Exception) {
-        "I can’t reach the AI service yet. Please try again in a moment." to conversationId
+    } catch (_: Exception) {
+        MioraChatResult("I can’t reach the AI service yet. Please try again in a moment.", conversationId, activeAccess, activeRefresh)
     }
 }
