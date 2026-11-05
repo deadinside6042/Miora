@@ -60,7 +60,22 @@ fun MioraApp(context: Context) {
     var message by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf("") }
+    var profileName by remember { mutableStateOf("") }
+    var profileMemory by remember { mutableStateOf("") }
+    var profileNotice by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(accessToken) {
+        if (accessToken.isNotBlank()) {
+            val profile = loadMioraProfile(accessToken)
+            if (profile != null) {
+                profileName = profile.preferredName
+                profileMemory = profile.memorySummary
+            }
+            val history = loadMioraHistory(accessToken, conversationId)
+            if (!history.isNullOrEmpty()) chat = history
+        }
+    }
 
     MaterialTheme(
         colorScheme = lightColorScheme(
@@ -88,7 +103,7 @@ fun MioraApp(context: Context) {
             containerColor = Cream,
             bottomBar = {
                 NavigationBar(containerColor = Color.White) {
-                    listOf("Home", "Mood", "Journal", "Companion").forEach { item ->
+                    listOf("Home", "Mood", "Journal", "Support", "Profile").forEach { item ->
                         NavigationBarItem(
                             selected = tab == item,
                             onClick = { tab = item },
@@ -98,6 +113,7 @@ fun MioraApp(context: Context) {
                                         "Home" -> Icons.Default.Home
                                         "Mood" -> Icons.Default.SentimentSatisfied
                                         "Journal" -> Icons.Default.EditNote
+                                        "Profile" -> Icons.Default.Person
                                         else -> Icons.Default.Forum
                                     }, contentDescription = item
                                 )
@@ -122,6 +138,14 @@ fun MioraApp(context: Context) {
                         prefs.edit().putString("journal", journal).apply()
                         notice = "Your reflection is saved on this device"
                     }, notice)
+                    "Profile" -> ProfileScreen(profileName, { profileName = it }, profileMemory, { profileMemory = it }, {
+                        busy = true
+                        scope.launch {
+                            val saved = withContext(Dispatchers.IO) { saveMioraProfile(accessToken, profileName.trim(), profileMemory.trim()) }
+                            profileNotice = if (saved) "Your profile and memory are saved." else "Could not save right now. Please try again."
+                            busy = false
+                        }
+                    }, profileNotice)
                     else -> CompanionScreen(chat, message, { message = it }, busy, { userText ->
                         chat = chat + ChatLine("user", userText)
                         message = ""
