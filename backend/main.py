@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import urllib.request
 import urllib.error
 from typing import Literal, Optional
@@ -86,6 +87,56 @@ def supabase_request(path: str, method: str = "GET", token: str = "", body=None,
         print(f"SUPABASE CONNECTION ERROR: {type(exc).__name__}: {exc}", flush=True)
         raise HTTPException(status_code=502, detail="Could not reach the account service")
 
+def retrieve_knowledge_resources(query: str, token: str, limit: int = 4) -> str:
+    """Retrieve approved, source-attributed resources using a lightweight lexical ranker."""
+    if not query.strip():
+        return ""
+    try:
+        rows = supabase_request(
+            "/rest/v1/knowledge_resources?review_status=eq.approved"
+            "&select=title,source_name,source_url,topic_tags,content"
+            "&limit=60",
+            token=token,
+        ) or []
+    except HTTPException as exc:
+        # A missing/unconfigured knowledge table must not take chat offline.
+        print(f"KNOWLEDGE RETRIEVAL UNAVAILABLE: {exc.status_code}", flush=True)
+        return ""
+
+    stop_words = {
+        "about", "after", "again", "also", "because", "been", "being", "could",
+        "does", "doing", "from", "have", "help", "into", "just", "like", "maybe",
+        "more", "need", "really", "some", "that", "them", "there", "they", "this",
+        "very", "what", "when", "where", "which", "with", "would", "your",
+    }
+    terms = {
+        word for word in re.findall(r"[a-zA-Z]{3,}", query.lower())
+        if word not in stop_words
+    }
+    ranked = []
+    for row in rows:
+        tags = " ".join(row.get("topic_tags") or [])
+        searchable = " ".join([
+            row.get("title") or "", row.get("source_name") or "",
+            tags, row.get("content") or "",
+        ]).lower()
+        score = sum(2 if term in tags.lower().split() else 1 for term in terms if term in searchable)
+        if score:
+            ranked.append((score, row))
+    ranked.sort(key=lambda item: item[0], reverse=True)
+
+    sections = []
+    for _, row in ranked[:limit]:
+        content = (row.get("content") or "").strip()[:3500]
+        sections.append(
+            f"RESOURCE: {row.get('title', 'Untitled')}\\n"
+            f"PROVIDER: {row.get('source_name', 'Unknown')}\\n"
+            f"SOURCE: {row.get('source_url', '')}\\n"
+            f"CONTENT: {content}"
+        )
+    return "\\n\\n".join(sections)
+
+
 def current_user(authorization: str = Header(default="")):
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Please sign in")
@@ -147,16 +198,22 @@ def chat(request: ChatRequest, authorization: str = Header(default="")):
             raise HTTPException(status_code=500, detail="Could not start a conversation")
         conversation_id = created[0]["id"]
 
+    latest_user = next((m.content for m in reversed(request.messages) if m.role == "user"), "")
+    knowledge = retrieve_knowledge_resources(latest_user, token)
+    system_content = SYSTEM_PROMPT
+    if knowledge:
+        system_content += "\\n\\nKNOWLEDGE RESOURCES (approved library material; cite the supplied source URL when used):\\n" + knowledge
+
     try:
         client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
         response = client.chat.completions.create(
             model=os.getenv("OPENROUTER_MODEL"),
-            messages=[{"role": "system", "content": SYSTEM_PROMPT},
+            messages=[{"role": "system", "content": system_content},
                       *[m.model_dump() for m in request.messages]],
             temperature=0.7,
-            max_tokens=500,
+            max_tokens=700,
         )
-        reply = response.choices[0].message.content or "I’m here with you."
+        reply = response.choices[0].message.content or "I couldn't form a useful response. Could you rephrase that?"
     except Exception as exc:
         print(f"AI ERROR: {type(exc).__name__}: {exc}", flush=True)
         raise HTTPException(status_code=502, detail="The AI service could not complete this request")
