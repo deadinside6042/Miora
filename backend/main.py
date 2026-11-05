@@ -38,6 +38,10 @@ class LoginRequest(BaseModel):
 class RefreshRequest(BaseModel):
     refresh_token: str = Field(min_length=1, max_length=2048)
 
+class ProfileUpdate(BaseModel):
+    preferred_name: Optional[str] = Field(default=None, max_length=80)
+    memory_summary: Optional[str] = Field(default=None, max_length=6000)
+
 SYSTEM_PROMPT = """
 You are Miora, an evidence-informed counselling support system. Your role is to help people understand difficulties, explore patterns, build coping skills, and consider practical next steps. You are not a companion persona and must not frame the interaction as friendship or emotional attachment.
 
@@ -179,6 +183,54 @@ def refresh_session(request: RefreshRequest):
         "expires_in": result.get("expires_in"),
     }
 
+@app.get("/profile")
+def get_profile(authorization: str = Header(default="")):
+    token, user_id = current_user(authorization)
+    rows = supabase_request(
+        f"/rest/v1/user_profiles?user_id=eq.{user_id}&select=preferred_name,memory_summary,updated_at",
+        token=token
+    ) or []
+    if rows:
+        return rows[0]
+    return {"preferred_name": "", "memory_summary": "", "updated_at": None}
+
+@app.put("/profile")
+def update_profile(request: ProfileUpdate, authorization: str = Header(default="")):
+    token, user_id = current_user(authorization)
+    existing = supabase_request(
+        f"/rest/v1/user_profiles?user_id=eq.{user_id}&select=user_id,preferred_name,memory_summary",
+        token=token
+    ) or []
+    current = existing[0] if existing else {}
+    body = {
+        "user_id": user_id,
+        "preferred_name": request.preferred_name if request.preferred_name is not None else current.get("preferred_name"),
+        "memory_summary": request.memory_summary if request.memory_summary is not None else current.get("memory_summary", ""),
+        "updated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+    }
+    supabase_request(
+        "/rest/v1/user_profiles?on_conflict=user_id",
+        method="POST", token=token, body=body,
+        prefer="resolution=merge-duplicates,return=representation"
+    )
+    return {"preferred_name": body["preferred_name"] or "", "memory_summary": body["memory_summary"] or ""}
+
+@app.get("/conversations/{conversation_id}/messages")
+def get_conversation_messages(conversation_id: str, authorization: str = Header(default="")):
+    token, user_id = current_user(authorization)
+    owned = supabase_request(
+        f"/rest/v1/conversations?id=eq.{conversation_id}&user_id=eq.{user_id}&select=id",
+        token=token
+    )
+    if not owned:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    rows = supabase_request(
+        f"/rest/v1/messages?conversation_id=eq.{conversation_id}&user_id=eq.{user_id}"
+        "&select=role,content,created_at&order=created_at.asc&limit=200",
+        token=token
+    ) or []
+    return {"messages": rows}
+
 @app.post("/chat")
 def chat(request: ChatRequest, authorization: str = Header(default="")):
     token, user_id = current_user(authorization)
@@ -205,6 +257,21 @@ def chat(request: ChatRequest, authorization: str = Header(default="")):
     latest_user = next((m.content for m in reversed(request.messages) if m.role == "user"), "")
     knowledge = retrieve_knowledge_resources(latest_user, token)
     system_content = SYSTEM_PROMPT
+    profile_rows = supabase_request(
+        f"/rest/v1/user_profiles?user_id=eq.{user_id}&select=preferred_name,memory_summary",
+        token=token
+    ) or []
+    if profile_rows:
+        profile = profile_rows[0]
+        preferred_name = (profile.get("preferred_name") or "").strip()
+        memory_summary = (profile.get("memory_summary") or "").strip()
+        if preferred_name or memory_summary:
+            system_content += "\\n\\nPERSISTENT USER CONTEXT (private profile; use naturally, never invent details):"
+            if preferred_name:
+                system_content += f"\\nPreferred name: {preferred_name}"
+            if memory_summary:
+                system_content += f"\\nRemembered context: {memory_summary}"
+            system_content += "\\nIf the user corrects any detail, accept the correction and update the profile only through an explicit profile-save action."
     if knowledge:
         system_content += "\\n\\nKNOWLEDGE RESOURCES (approved library material; cite the supplied source URL when used):\\n" + knowledge
 
