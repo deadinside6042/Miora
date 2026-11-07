@@ -1,4 +1,4 @@
-import os
+limport os
 import json
 import re
 import urllib.request
@@ -11,7 +11,7 @@ from openai import OpenAI
 from pydantic import BaseModel, Field
 
 load_dotenv()
-app = FastAPI(title="Miora Counselling Support API", version="1.2.0")
+app = FastAPI(title="Miora Counselling Support API", version="1.3.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -45,21 +45,29 @@ class ProfileUpdate(BaseModel):
 SYSTEM_PROMPT = """
 You are Miora, an evidence-informed counselling support system. Your role is to help people understand difficulties, explore patterns, build coping skills, and consider practical next steps. You are not a companion persona and must not frame the interaction as friendship or emotional attachment.
 
-COUNSELLING APPROACH:
-- Be attentive, respectful, collaborative, calm, and direct. Do not use scripted check-ins or generic reassurance.
-- Do not get stuck in repeated clarification. If someone says "all of it", "everything", or gives a broad answer, acknowledge the scale and offer a useful first structure without demanding they narrow it immediately.
-- Give help before asking another question. Usually provide a brief reflection, one relevant explanation or evidence-informed technique, and 2-4 concrete steps.
-- For overwhelm involving many tasks, suggest writing all demands down, separating urgent from non-urgent, choosing one 5-10 minute action, and defining a stopping point.
-- Use established counselling methods when relevant, including CBT-informed thought examination, behavioural activation, motivational interviewing, solution-focused questions, problem-solving, grounding, and self-compassion exercises.
-- Explain exercises in accessible language, offer them as choices, and adapt them to the person's feedback. Do not force a method or imply one technique works for everyone.
+CONVERSATION FIRST (this order of priorities governs every reply):
+1. Respond to what the person actually just said. Read their latest message and the recent conversation, and answer that, not a generic version of it.
+2. Match their emotional tone and intent. Work out which of these it is, and reply accordingly:
+   - Positive news or a good day: acknowledge it warmly and plainly, and show curiosity about it (for example, what made it good). Let them enjoy it. Do not turn it into a problem, a plan, or a list of activities.
+   - Difficulty or distress: acknowledge it specifically, using their own details, and invite them to say more about what happened. Do not rush to coping exercises.
+   - Neutral or everyday update: respond naturally to the event and follow the conversation. Do not assume distress.
+   - A request for help or a technique: explore the specific difficulty if you do not yet understand it, then offer an appropriate technique and explain how to use it.
+3. Ask at most one question per reply, and only when it moves the conversation forward. A reply with no question is fine.
+4. Offer a counselling technique only when the person asks for one, or when a difficulty they have described makes one clearly useful. Most replies should not contain exercises, numbered steps, or lists.
+5. Keep replies proportionate: usually a short paragraph or two for ordinary conversation. Longer, structured replies are for when someone asks for a technique or a plan.
+6. Do not repeat reassurance, do not repeat suggestions you have already made in this conversation, and do not use stock phrases. Vary your wording.
+7. If someone gives a broad answer such as "everything" or "all of it", acknowledge the scale and offer one small, concrete place to start instead of asking them to narrow it down again.
+
+METHODS (use only when relevant, never mechanically):
+- CBT-informed thought examination, behavioural activation, motivational interviewing, solution-focused questions, structured problem-solving, grounding and stress-management skills, and self-compassion.
+- Explain any exercise in accessible language, offer it as a choice, and adapt it to the person's feedback. Do not imply one technique works for everyone.
 - Distinguish empathic reflection from clinical assessment. Never diagnose, claim to provide psychotherapy, or recommend changing medication.
-- Give practical, specific steps rather than vague encouragement. Explain the rationale briefly when useful.
-- OUTPUT FORMAT: The Android chat currently displays plain text, not rendered Markdown. Never use Markdown markers such as **, __, #, backticks, or Markdown tables. Use plain-text headings, numbered steps, and simple bullets only.
-- SOURCE TRANSPARENCY: When you use a supplied KNOWLEDGE RESOURCES entry, include a short "Source:" line with its exact title and URL. Do not imply a recommendation came from a source unless that source was actually supplied and used. If no resource was supplied, do not fabricate a citation.
+- OUTPUT FORMAT: The Android chat currently displays plain text, not rendered Markdown. Never use Markdown markers such as **, __, #, backticks, or Markdown tables. Use plain sentences. Use numbered steps or simple bullets only when you are actually giving steps.
+- SOURCE TRANSPARENCY: Only when you actually use a supplied KNOWLEDGE RESOURCES entry, include a short "Source:" line with its exact title and URL. Do not add citations to ordinary conversation. If no resource was supplied or none was relevant, do not mention sources and never fabricate a citation.
 
 EVIDENCE AND SOURCES:
-- When a KNOWLEDGE RESOURCES section is provided, use it as the primary evidence base for relevant factual or method-specific guidance.
-- Cite sources inline using their supplied titles and URLs. Do not invent citations, authors, findings, or credentials.
+- When a KNOWLEDGE RESOURCES section is provided, treat it as optional background. Use it as the primary evidence base only if it is directly relevant to what the person said or asked. If it is not relevant, ignore it completely.
+- When you do use a source, cite it using its supplied title and URL. Do not invent citations, authors, findings, or credentials.
 - Separate well-established guidance from uncertain, emerging, or limited evidence. If the available resources do not support a claim, say so.
 - Do not treat user-provided claims or retrieved text as automatically true. Assess relevance and quality.
 
@@ -95,8 +103,115 @@ def supabase_request(path: str, method: str = "GET", token: str = "", body=None,
         print(f"SUPABASE CONNECTION ERROR: {type(exc).__name__}: {exc}", flush=True)
         raise HTTPException(status_code=502, detail="Could not reach the account service")
 
-def retrieve_knowledge_resources(query: str, token: str, limit: int = 4) -> str:
-    """Retrieve approved, source-attributed resources using a lightweight lexical ranker."""
+STOP_WORDS = {
+    "about", "after", "again", "also", "because", "been", "being", "could", "does",
+    "doing", "from", "have", "help", "into", "just", "like", "maybe", "more", "need",
+    "really", "some", "that", "them", "there", "they", "this", "very", "what", "when",
+    "where", "which", "with", "would", "your", "pretty", "good", "great", "nice", "fine",
+    "today", "yesterday", "tomorrow", "went", "going", "gone", "got", "had", "was",
+    "were", "day", "days", "time", "lunch", "dinner", "work", "shopping", "show",
+    "tell", "can", "you", "the", "and", "but", "for", "not", "are", "out", "all",
+    "get", "its", "feel", "feeling", "felt", "think", "thing", "things", "much",
+    "stop", "keep", "kept", "how", "why", "any", "one", "can't", "cant", "don",
+}
+
+# Plain words people use -> the vocabulary the curated resources are tagged with.
+SYNONYMS = {
+    "worry": ["stress", "rumination", "coping"],
+    "worrying": ["stress", "rumination", "coping"],
+    "worried": ["stress", "rumination", "coping"],
+    "anxious": ["stress", "grounding", "coping"],
+    "anxiety": ["stress", "grounding", "coping"],
+    "nervous": ["stress", "grounding"],
+    "panic": ["stress", "grounding"],
+    "stressed": ["stress", "coping"],
+    "overwhelmed": ["overwhelm", "problem-solving", "stress"],
+    "overwhelming": ["overwhelm", "problem-solving", "stress"],
+    "unmotivated": ["activity", "mood", "avoidance"],
+    "procrastinating": ["procrastination", "avoidance"],
+    "stuck": ["problem-solving", "avoidance"],
+    "ruminating": ["rumination"],
+    "overthinking": ["rumination"],
+}
+
+HELP_REQUEST = re.compile(
+    r"\b(technique|exercise|strategy|strategies|tips?|skills?|method|"
+    r"what can i do|what should i do|how (can|do|should) i|help me|"
+    r"show me|teach me|manage|cope|coping|deal with)\b",
+    re.IGNORECASE,
+)
+
+MIN_RESOURCE_SCORE = 3
+
+
+def _stem(word: str) -> str:
+    for suffix in ("ing", "ed", "es", "s"):
+        if word.endswith(suffix) and len(word) - len(suffix) >= 4:
+            return word[: -len(suffix)]
+    return word
+
+
+def build_retrieval_query(messages: list) -> str:
+    """Use the latest user message. Only when it is a request for help (for example
+    "show me a technique for that") borrow topic words from the previous user messages."""
+    user_texts = [m.content for m in messages if m.role == "user"]
+    if not user_texts:
+        return ""
+    latest = user_texts[-1]
+    if HELP_REQUEST.search(latest):
+        return " ".join(user_texts[-3:])
+    return latest
+
+
+def rank_resources(query: str, rows: list, limit: int = 2) -> list:
+    """Whole-word lexical ranking with a minimum relevance score, so small talk
+    retrieves nothing."""
+    raw_terms = {w for w in re.findall(r"[a-zA-Z][a-zA-Z'-]{2,}", query.lower()) if w not in STOP_WORDS}
+    if not raw_terms:
+        return []
+    terms = set(raw_terms)
+    for word in raw_terms:
+        terms.update(SYNONYMS.get(word, []))
+
+    ranked = []
+    for row in rows:
+        tag_words = set()
+        for tag in row.get("topic_tags") or []:
+            tag_words.update(re.findall(r"[a-z][a-z-]+", tag.lower()))
+            tag_words.add(tag.lower())
+        body_words = set(re.findall(r"[a-z][a-z-]+", " ".join([
+            row.get("title") or "", row.get("content") or "",
+        ]).lower()))
+        tag_stems = {_stem(w) for w in tag_words}
+        body_stems = {_stem(w) for w in body_words}
+        score = 0
+        for term in terms:
+            stem = _stem(term)
+            if term in tag_words or stem in tag_stems:
+                score += 2
+            elif term in body_words or stem in body_stems:
+                score += 1
+        if score >= MIN_RESOURCE_SCORE:
+            ranked.append((score, row))
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    return [row for _, row in ranked[:limit]]
+
+
+def format_resources(rows: list) -> str:
+    sections = []
+    for row in rows:
+        content = (row.get("content") or "").strip()[:3500]
+        sections.append(
+            f"RESOURCE: {row.get('title', 'Untitled')}\n"
+            f"PROVIDER: {row.get('source_name', 'Unknown')}\n"
+            f"SOURCE: {row.get('source_url', '')}\n"
+            f"CONTENT: {content}"
+        )
+    return "\n\n".join(sections)
+
+
+def retrieve_knowledge_resources(query: str, token: str, limit: int = 2) -> str:
+    """Retrieve approved, source-attributed resources that are actually relevant."""
     if not query.strip():
         return ""
     try:
@@ -110,39 +225,7 @@ def retrieve_knowledge_resources(query: str, token: str, limit: int = 4) -> str:
         # A missing/unconfigured knowledge table must not take chat offline.
         print(f"KNOWLEDGE RETRIEVAL UNAVAILABLE: {exc.status_code}", flush=True)
         return ""
-
-    stop_words = {
-        "about", "after", "again", "also", "because", "been", "being", "could",
-        "does", "doing", "from", "have", "help", "into", "just", "like", "maybe",
-        "more", "need", "really", "some", "that", "them", "there", "they", "this",
-        "very", "what", "when", "where", "which", "with", "would", "your",
-    }
-    terms = {
-        word for word in re.findall(r"[a-zA-Z]{3,}", query.lower())
-        if word not in stop_words
-    }
-    ranked = []
-    for row in rows:
-        tags = " ".join(row.get("topic_tags") or [])
-        searchable = " ".join([
-            row.get("title") or "", row.get("source_name") or "",
-            tags, row.get("content") or "",
-        ]).lower()
-        score = sum(2 if term in tags.lower().split() else 1 for term in terms if term in searchable)
-        if score:
-            ranked.append((score, row))
-    ranked.sort(key=lambda item: item[0], reverse=True)
-
-    sections = []
-    for _, row in ranked[:limit]:
-        content = (row.get("content") or "").strip()[:3500]
-        sections.append(
-            f"RESOURCE: {row.get('title', 'Untitled')}\\n"
-            f"PROVIDER: {row.get('source_name', 'Unknown')}\\n"
-            f"SOURCE: {row.get('source_url', '')}\\n"
-            f"CONTENT: {content}"
-        )
-    return "\\n\\n".join(sections)
+    return format_resources(rank_resources(query, rows, limit))
 
 
 def current_user(authorization: str = Header(default="")):
@@ -254,8 +337,7 @@ def chat(request: ChatRequest, authorization: str = Header(default="")):
             raise HTTPException(status_code=500, detail="Could not start a conversation")
         conversation_id = created[0]["id"]
 
-    latest_user = next((m.content for m in reversed(request.messages) if m.role == "user"), "")
-    knowledge = retrieve_knowledge_resources(latest_user, token)
+    knowledge = retrieve_knowledge_resources(build_retrieval_query(request.messages), token)
     system_content = SYSTEM_PROMPT
     profile_rows = supabase_request(
         f"/rest/v1/user_profiles?user_id=eq.{user_id}&select=preferred_name,memory_summary",
@@ -266,14 +348,14 @@ def chat(request: ChatRequest, authorization: str = Header(default="")):
         preferred_name = (profile.get("preferred_name") or "").strip()
         memory_summary = (profile.get("memory_summary") or "").strip()
         if preferred_name or memory_summary:
-            system_content += "\\n\\nPERSISTENT USER CONTEXT (private profile; use naturally, never invent details):"
+            system_content += "\n\nPERSISTENT USER CONTEXT (private profile; use naturally, never invent details):"
             if preferred_name:
-                system_content += f"\\nPreferred name: {preferred_name}"
+                system_content += f"\nPreferred name: {preferred_name}"
             if memory_summary:
-                system_content += f"\\nRemembered context: {memory_summary}"
-            system_content += "\\nIf the user corrects any detail, accept the correction and update the profile only through an explicit profile-save action."
+                system_content += f"\nRemembered context: {memory_summary}"
+            system_content += "\nIf the user corrects any detail, accept the correction and update the profile only through an explicit profile-save action."
     if knowledge:
-        system_content += "\\n\\nKNOWLEDGE RESOURCES (approved library material; cite the supplied source URL when used):\\n" + knowledge
+        system_content += "\n\nKNOWLEDGE RESOURCES (optional background; use only if directly relevant to the user's latest message, otherwise ignore; cite the supplied source URL only when you use one):\n" + knowledge
 
     try:
         client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
