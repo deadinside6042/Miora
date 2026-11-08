@@ -291,7 +291,7 @@ fun CompanionScreen(chat: List<ChatLine>, message: String, onMessage: (String) -
     // or a new message / typing indicator is added.
     LaunchedEffect(chat.size, busy) {
         if (chat.isNotEmpty()) {
-            listState.animateScrollToItem(chat.lastIndex)
+            listState.animateScrollToItem(if (busy) chat.size else chat.lastIndex)
         }
     }
 
