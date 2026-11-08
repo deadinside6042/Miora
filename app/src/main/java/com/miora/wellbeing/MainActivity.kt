@@ -68,12 +68,30 @@ fun MioraApp(context: Context) {
 
     LaunchedEffect(accessToken) {
         if (accessToken.isNotBlank()) {
-            val profile = loadMioraProfile(accessToken)
+            // Refresh first: access tokens expire, and profile/history requests
+            // must not keep using an expired JWT.
+            var activeAccess = accessToken
+            var activeRefresh = refreshToken
+            val refreshed = withContext(Dispatchers.IO) {
+                refreshMioraSession(activeRefresh)
+            }
+            if (refreshed != null && refreshed.accessToken.isNotBlank()) {
+                activeAccess = refreshed.accessToken
+                activeRefresh = refreshed.refreshToken
+                accessToken = activeAccess
+                refreshToken = activeRefresh
+                prefs.edit()
+                    .putString("access_token", activeAccess)
+                    .putString("refresh_token", activeRefresh)
+                    .apply()
+            }
+
+            val profile = loadMioraProfile(activeAccess)
             if (profile != null) {
                 profileName = profile.preferredName
                 profileMemory = profile.memorySummary
             }
-            val history = loadMioraHistory(accessToken, conversationId)
+            val history = loadMioraHistory(activeAccess, conversationId)
             if (!history.isNullOrEmpty()) chat = history
         }
     }
