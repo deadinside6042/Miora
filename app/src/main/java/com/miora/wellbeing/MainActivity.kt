@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -284,9 +285,23 @@ fun JournalScreen(value: String, onChange: (String) -> Unit, onSave: () -> Unit,
 
 @Composable
 fun CompanionScreen(chat: List<ChatLine>, message: String, onMessage: (String) -> Unit, busy: Boolean, onSend: (String) -> Unit) {
+    val listState = rememberLazyListState()
+
+    // Restore the conversation view at its newest message whenever chat opens
+    // or a new message / typing indicator is added.
+    LaunchedEffect(chat.size, busy) {
+        if (chat.isNotEmpty()) {
+            listState.animateScrollToItem(chat.lastIndex)
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         Header("A supportive conversation", "Talk with Miora", "I can help you reflect, one step at a time.")
-        LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             items(chat) { line ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.role == "user") Arrangement.End else Arrangement.Start) {
                     Surface(
