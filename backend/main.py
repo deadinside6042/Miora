@@ -287,8 +287,13 @@ def should_research(messages: list) -> bool:
 def research_current_information(query: str) -> str:
     """Optional Tavily search over a conservative health-source allowlist."""
     api_key = os.getenv("TAVILY_API_KEY", "").strip()
-    if not api_key or not query.strip():
+    if not query.strip():
+        print("LIVE RESEARCH: skipped (empty query)", flush=True)
         return ""
+    if not api_key:
+        print("LIVE RESEARCH: skipped (TAVILY_API_KEY not configured)", flush=True)
+        return ""
+    print("LIVE RESEARCH: started", flush=True)
     payload = json.dumps({
         "query": query[:500],
         "topic": "general",
@@ -309,7 +314,9 @@ def research_current_information(query: str) -> str:
             result = json.loads(response.read().decode())
         from urllib.parse import urlparse
         sources = []
-        for item in result.get("results", [])[:5]:
+        raw_results = result.get("results", [])[:5]
+        accepted_results = 0
+        for item in raw_results:
             url = item.get("url", "")
             title = (item.get("title") or "").strip()
             snippet = (item.get("content") or "").strip()
@@ -318,9 +325,16 @@ def research_current_information(query: str) -> str:
                 continue
             if title and url and snippet:
                 sources.append(f"TITLE: {title}\nURL: {url}\nEXCERPT: {snippet[:1200]}")
+                accepted_results += 1
+        print(
+            f"LIVE RESEARCH: completed; provider_results={len(raw_results)} "
+            f"trusted_results={accepted_results}",
+            flush=True,
+        )
         return "\n\n".join(sources)
     except Exception as exc:
-        print(f"LIVE RESEARCH UNAVAILABLE: {type(exc).__name__}: {exc}", flush=True)
+        # Do not log exception text: provider errors can contain request details.
+        print(f"LIVE RESEARCH: failed; error_type={type(exc).__name__}", flush=True)
         return ""
 
 
