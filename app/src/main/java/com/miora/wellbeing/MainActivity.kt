@@ -303,13 +303,14 @@ fun JournalScreen(value: String, onChange: (String) -> Unit, onSave: () -> Unit,
 
 @Composable
 fun CompanionScreen(chat: List<ChatLine>, message: String, onMessage: (String) -> Unit, busy: Boolean, onSend: (String) -> Unit) {
-    val listState = rememberLazyListState()
+    // Reverse the list so the newest message is anchored at the bottom.
+    // Older messages remain available by scrolling upward.
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = 0)
+    val newestFirst = remember(chat) { chat.asReversed() }
 
-    // Restore the conversation view at its newest message whenever chat opens
-    // or a new message / typing indicator is added.
     LaunchedEffect(chat.size, busy) {
-        if (chat.isNotEmpty()) {
-            listState.animateScrollToItem(if (busy) chat.size else chat.lastIndex)
+        if (chat.isNotEmpty() || busy) {
+            listState.animateScrollToItem(0)
         }
     }
 
@@ -317,10 +318,12 @@ fun CompanionScreen(chat: List<ChatLine>, message: String, onMessage: (String) -
         Header("A supportive conversation", "Talk with Miora", "I can help you reflect, one step at a time.")
         LazyColumn(
             state = listState,
+            reverseLayout = true,
             modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            items(chat) { line ->
+            if (busy) item { Text("Miora is thinking…", Modifier.padding(12.dp), color = Muted, fontSize = 13.sp) }
+            items(newestFirst) { line ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = if (line.role == "user") Arrangement.End else Arrangement.Start) {
                     Surface(
                         color = if (line.role == "user") Mint else Color.White,
@@ -329,7 +332,6 @@ fun CompanionScreen(chat: List<ChatLine>, message: String, onMessage: (String) -
                     ) { Text(line.text, Modifier.padding(14.dp), color = Ink, fontSize = 15.sp) }
                 }
             }
-            if (busy) item { Text("Miora is thinking…", Modifier.padding(12.dp), color = Muted, fontSize = 13.sp) }
         }
         Row(Modifier.fillMaxWidth().background(Color.White).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
