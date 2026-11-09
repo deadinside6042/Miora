@@ -201,54 +201,108 @@ fun Header(eyebrow: String, title: String, subtitle: String = "") {
 
 @Composable
 fun HomeScreen(mood: String, journal: String, navigate: (String) -> Unit) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        Header("A little space for you", "Welcome to Miora", "Small steps count. You can start wherever you are.")
-        Card(Modifier.fillMaxWidth().padding(horizontal = 18.dp), colors = CardDefaults.cardColors(containerColor = Mint), shape = RoundedCornerShape(26.dp)) {
-            Column(Modifier.padding(20.dp)) {
-                Text("A gentle reminder", color = Teal, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+    val greeting = when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
+        in 5..11 -> "Good morning"
+        in 12..16 -> "Good afternoon"
+        else -> "Good evening"
+    }
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+    ) {
+        Column(Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = 18.dp)) {
+            Text("YOUR SPACE", color = Teal, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 2.sp)
+            Spacer(Modifier.height(8.dp))
+            Text("$greeting.", color = Ink, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            Text("You can take today one moment at a time.", color = Muted, fontSize = 14.sp)
+        }
+
+        Card(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+            colors = CardDefaults.cardColors(containerColor = Ink),
+            shape = RoundedCornerShape(26.dp)
+        ) {
+            Column(Modifier.fillMaxWidth().padding(22.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(color = Color.White.copy(alpha = .12f), shape = CircleShape) {
+                        Icon(Icons.Default.Spa, null, tint = Color(0xFFB8E1D3), modifier = Modifier.padding(10.dp).size(22.dp))
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Text("A MOMENT FOR YOU", color = Color(0xFFB8E1D3), fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.2.sp)
+                }
+                Spacer(Modifier.height(16.dp))
+                Text("You don’t have to figure everything out today.", color = Color.White, fontSize = 23.sp, lineHeight = 29.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
-                Text("You don’t have to figure everything out today.", color = Ink, fontSize = 23.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(10.dp))
-                Text("Take one breath. Then the next.", color = Muted, fontSize = 14.sp)
+                Text("Pause. Notice how you’re doing. Start wherever you are.", color = Color(0xFFD5E4DF), fontSize = 14.sp, lineHeight = 20.sp)
+                Spacer(Modifier.height(18.dp))
+                Button(
+                    onClick = { navigate("Companion") },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB8E1D3), contentColor = Ink),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Text("Talk with Miora")
+                    Spacer(Modifier.width(8.dp))
+                    Icon(Icons.Default.ArrowForward, null, modifier = Modifier.size(17.dp))
+                }
             }
         }
-        Text("Your daily check-in", Modifier.padding(start = 22.dp, top = 24.dp, bottom = 10.dp), color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-        Card(Modifier.fillMaxWidth().padding(horizontal = 18.dp), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(22.dp)) {
+
+        Row(
+            Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, top = 26.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Your check-in", color = Ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            Text("NO PRESSURE", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        }
+        Card(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp).clickable { navigate("Mood") },
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            shape = RoundedCornerShape(22.dp)
+        ) {
             Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(if (mood.isBlank()) "How are you feeling?" else "Today you felt $mood", color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-                    Text("There’s no right or wrong answer.", color = Muted, fontSize = 13.sp)
+                Surface(color = Mint, shape = RoundedCornerShape(15.dp)) {
+                    Icon(Icons.Default.FavoriteBorder, null, tint = Teal, modifier = Modifier.padding(13.dp).size(24.dp))
                 }
-                Button(onClick = { navigate("Mood") }, shape = RoundedCornerShape(14.dp)) { Text("Check in") }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(if (mood.isBlank()) "How are you feeling?" else "You checked in as $mood", color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                    Spacer(Modifier.height(3.dp))
+                    Text(if (mood.isBlank()) "Take a moment to name it." else "You can check in again whenever you like.", color = Muted, fontSize = 12.sp)
+                }
+                Icon(Icons.Default.ChevronRight, null, tint = Teal)
             }
         }
-        Text("Make room for a thought", Modifier.padding(start = 22.dp, top = 24.dp, bottom = 10.dp), color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-        Card(Modifier.fillMaxWidth().padding(horizontal = 18.dp), colors = CardDefaults.cardColors(containerColor = Peach.copy(alpha = .55f)), shape = RoundedCornerShape(22.dp)) {
-            Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(if (journal.isBlank()) "A page just for you" else "Your reflection is saved", color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-                    Text("Write without needing to make it perfect.", color = Muted, fontSize = 13.sp)
+
+        Text("A little space to write", Modifier.padding(start = 22.dp, top = 24.dp, bottom = 10.dp), color = Ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+        Card(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp).clickable { navigate("Journal") },
+            colors = CardDefaults.cardColors(containerColor = Peach.copy(alpha = .58f)),
+            shape = RoundedCornerShape(22.dp)
+        ) {
+            Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(color = Color.White.copy(alpha = .75f), shape = RoundedCornerShape(15.dp)) {
+                    Icon(Icons.Default.EditNote, null, tint = Ink, modifier = Modifier.padding(13.dp).size(24.dp))
                 }
-                IconButton(onClick = { navigate("Journal") }) { Icon(Icons.Default.ArrowForward, null, tint = Ink) }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(if (journal.isBlank()) "Put a thought into words" else "Your reflection is saved", color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                    Spacer(Modifier.height(3.dp))
+                    Text("Your journal stays on this device.", color = Muted, fontSize = 12.sp)
+                }
+                Icon(Icons.Default.ChevronRight, null, tint = Ink)
             }
         }
-        Card(Modifier.fillMaxWidth().padding(18.dp), colors = CardDefaults.cardColors(containerColor = Ink), shape = RoundedCornerShape(22.dp)) {
-            Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Talk it out", color = Color(0xFFB8E1D3), fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(5.dp))
-                    Text("A calm, judgment-free space to untangle a thought.", color = Color.White, fontSize = 17.sp)
-                    Spacer(Modifier.height(12.dp))
-                    Button(onClick = { navigate("Companion") }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB8E1D3), contentColor = Ink)) { Text("Chat with Miora") }
-                }
-                Icon(Icons.Default.Favorite, null, tint = Color(0xFFB8E1D3), modifier = Modifier.size(42.dp))
-            }
-        }
-        Text("Miora is a wellness companion, not a substitute for professional care.", Modifier.padding(horizontal = 22.dp, vertical = 8.dp), color = Muted, fontSize = 11.sp)
+
+        Text(
+            "Miora is a wellness companion, not a substitute for professional care.",
+            Modifier.padding(horizontal = 22.dp, vertical = 18.dp),
+            color = Muted,
+            fontSize = 11.sp
+        )
         Spacer(Modifier.height(12.dp))
     }
 }
-
 @Composable
 fun MoodScreen(selected: String, onSelect: (String) -> Unit, notice: String) {
     val moods = listOf("Great" to "😊", "Good" to "🙂", "Okay" to "😐", "Low" to "😔", "Anxious" to "😟", "Overwhelmed" to "😣")
