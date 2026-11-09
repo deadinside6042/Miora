@@ -305,34 +305,111 @@ fun HomeScreen(mood: String, journal: String, navigate: (String) -> Unit) {
 }
 @Composable
 fun MoodScreen(selected: String, onSelect: (String) -> Unit, notice: String) {
-    val moods = listOf("Great" to "😊", "Good" to "🙂", "Okay" to "😐", "Low" to "😔", "Anxious" to "😟", "Overwhelmed" to "😣")
+    val moods = listOf(
+        "Great" to "😊",
+        "Good" to "🙂",
+        "Okay" to "😐",
+        "Low" to "😔",
+        "Anxious" to "😟",
+        "Overwhelmed" to "😣"
+    )
+    val reflection = when (selected) {
+        "Great" -> "What’s helping things feel good today?"
+        "Good" -> "What’s one thing you’d like to carry into the rest of your day?"
+        "Okay" -> "What would make this moment a little easier?"
+        "Low" -> "What would feel comforting or supportive right now?"
+        "Anxious" -> "Is there one small thing you can focus on in this moment?"
+        "Overwhelmed" -> "What is one thing that can wait until later?"
+        else -> "There’s no right or wrong answer. Just notice what’s here."
+    }
+
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        Header("Notice, don't judge", "How are you feeling?", "Choose what feels closest. You can always change it.")
-        moods.chunked(2).forEach { pair ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                pair.forEach { (name, emoji) ->
-                    Card(
-                        Modifier.weight(1f).padding(vertical = 6.dp).clickable { onSelect(name) },
-                        colors = CardDefaults.cardColors(containerColor = if (selected == name) Mint else Color.White),
-                        border = if (selected == name) BorderStroke(2.dp, Teal) else null,
-                        shape = RoundedCornerShape(20.dp)
-                    ) {
-                        Column(Modifier.fillMaxWidth().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(emoji, fontSize = 34.sp)
-                            Spacer(Modifier.height(7.dp))
-                            Text(name, color = Ink, fontWeight = FontWeight.SemiBold)
+        Column(Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = 18.dp)) {
+            Text("YOUR CHECK-IN", color = Teal, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 2.sp)
+            Spacer(Modifier.height(8.dp))
+            Text("How are you feeling?", color = Ink, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(6.dp))
+            Text("Pick the one that feels closest. You can change it anytime.", color = Muted, fontSize = 14.sp, lineHeight = 20.sp)
+        }
+
+        Card(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            shape = RoundedCornerShape(24.dp)
+        ) {
+            Column(Modifier.padding(16.dp)) {
+                Text("RIGHT NOW", color = Muted, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 1.5.sp)
+                Spacer(Modifier.height(12.dp))
+                moods.chunked(2).forEach { pair ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        pair.forEach { (name, emoji) ->
+                            val isSelected = selected == name
+                            Card(
+                                Modifier.weight(1f).padding(vertical = 5.dp).clickable { onSelect(name) },
+                                colors = CardDefaults.cardColors(containerColor = if (isSelected) Mint else Cream),
+                                border = if (isSelected) BorderStroke(2.dp, Teal) else BorderStroke(1.dp, Color(0xFFE8EDE9)),
+                                shape = RoundedCornerShape(18.dp)
+                            ) {
+                                Column(
+                                    Modifier.fillMaxWidth().padding(vertical = 15.dp, horizontal = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(emoji, fontSize = 30.sp)
+                                    Spacer(Modifier.height(7.dp))
+                                    Text(name, color = Ink, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium, fontSize = 14.sp)
+                                    if (isSelected) {
+                                        Spacer(Modifier.height(3.dp))
+                                        Text("SELECTED", color = Teal, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-        if (notice.isNotBlank()) Text(notice, Modifier.padding(22.dp), color = Teal, fontWeight = FontWeight.Medium)
-        Card(Modifier.fillMaxWidth().padding(18.dp), colors = CardDefaults.cardColors(containerColor = Peach.copy(alpha = .5f)), shape = RoundedCornerShape(20.dp)) {
-            Text("Try asking yourself: What might this feeling be asking me to notice?", Modifier.padding(18.dp), color = Ink, fontSize = 15.sp)
+
+        if (selected.isNotBlank()) {
+            Card(
+                Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
+                colors = CardDefaults.cardColors(containerColor = Mint),
+                shape = RoundedCornerShape(22.dp)
+            ) {
+                Column(Modifier.padding(19.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Spa, null, tint = Teal, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("A gentle reflection", color = Teal, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text(reflection, color = Ink, fontSize = 17.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(8.dp))
+                    Text("You don’t need to answer. This is just a moment for you.", color = Muted, fontSize = 12.sp, lineHeight = 18.sp)
+                }
+            }
+        } else {
+            Card(
+                Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
+                colors = CardDefaults.cardColors(containerColor = Peach.copy(alpha = .55f)),
+                shape = RoundedCornerShape(22.dp)
+            ) {
+                Text(
+                    "Take a breath. There’s no score and no perfect way to feel.",
+                    Modifier.padding(19.dp), color = Ink, fontSize = 15.sp, lineHeight = 22.sp
+                )
+            }
         }
+
+        if (notice.isNotBlank()) {
+            Row(Modifier.padding(horizontal = 22.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.CheckCircle, null, tint = Teal, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(7.dp))
+                Text(notice, color = Teal, fontWeight = FontWeight.Medium, fontSize = 12.sp)
+            }
+        }
+        Spacer(Modifier.height(20.dp))
     }
 }
-
 @Composable
 fun JournalScreen(value: String, onChange: (String) -> Unit, onSave: () -> Unit, notice: String) {
     Column(Modifier.fillMaxSize()) {
