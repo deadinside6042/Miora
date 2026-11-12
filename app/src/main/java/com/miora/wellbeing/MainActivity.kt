@@ -66,7 +66,7 @@ fun MioraApp(context: Context) {
     var profileNotice by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(accessToken) {
+    LaunchedEffect(accessToken.isNotBlank()) {
         if (accessToken.isNotBlank()) {
             // Refresh first: access tokens expire, and profile/history requests
             // must not keep using an expired JWT.
@@ -772,7 +772,7 @@ suspend fun askMiora(text: String, history: List<ChatLine>, token: String, refre
     return try {
         suspend fun sendChat(): Pair<Int, String> = withContext(Dispatchers.IO) {
             val messages = JSONArray()
-            history.takeLast(30).forEach { messages.put(JSONObject().put("role", it.role).put("content", it.text)) }
+            history.takeLast(20).forEach { messages.put(JSONObject().put("role", it.role).put("content", it.text)) }
             val payload = JSONObject().put("messages", messages)
             if (conversationId.isNotBlank()) payload.put("conversation_id", conversationId)
             postMiora("chat", payload, activeAccess)
