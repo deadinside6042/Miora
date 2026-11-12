@@ -748,9 +748,10 @@ def chat(
     stored_rows = supabase_request(
         f"/rest/v1/messages?conversation_id=eq.{conversation_id}"
         f"&user_id=eq.{user_id}"
-        "&select=role,content&order=created_at.asc&limit=80",
+        "&select=role,content&order=created_at.desc&limit=80",
         token=token,
     ) or []
+    stored_rows.reverse()
     conversation_messages = [
         Message(role=row["role"], content=row["content"])
         for row in stored_rows
