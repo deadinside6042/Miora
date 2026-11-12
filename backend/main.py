@@ -742,38 +742,29 @@ def chat(
 
         conversation_id = created[0]["id"]
 
-    # Rebuild context from the saved conversation as well as the client payload.
-    # The client may only hold a recent window; the database remains the durable history.
+    # The database is the durable source of conversation history. Load previous
+    # turns server-side so older disclosures are not lost when the Android client
+    # sends only a recent window of messages.
     stored_rows = supabase_request(
         f"/rest/v1/messages?conversation_id=eq.{conversation_id}"
         f"&user_id=eq.{user_id}"
-        "&select=role,content&order=created_at.desc&limit=80",
+        "&select=role,content&order=created_at.asc&limit=80",
         token=token,
     ) or []
-    stored_rows.reverse()
-    stored_context = [
+    conversation_messages = [
         Message(role=row["role"], content=row["content"])
         for row in stored_rows
         if row.get("role") in ("user", "assistant") and row.get("content")
     ]
+    latest_user_message = next(
+        (m for m in reversed(request.messages) if m.role == "user"),
+        None,
+    )
+    if latest_user_message:
+        conversation_messages.append(latest_user_message)
 
-    # Find the overlap between persisted history and the client's recent window
-    # so messages are not duplicated in the prompt.
-    overlap = 0
-    max_overlap = min(len(stored_context), len(request.messages))
-    for size in range(max_overlap, 0, -1):
-        left = stored_context[-size:]
-        right = request.messages[:size]
-        if all(
-            a.role == b.role and a.content == b.content
-            for a, b in zip(left, right)
-        ):
-            overlap = size
-            break
-
-    conversation_messages = (
-        stored_context + request.messages[overlap:]
-    )[-40:]
+    # Keep a generous but bounded context window for predictable model requests.
+    conversation_messages = conversation_messages[-40:]
 
     retrieval_query = build_retrieval_query(conversation_messages)
     knowledge = retrieve_knowledge_resources(retrieval_query, token)
