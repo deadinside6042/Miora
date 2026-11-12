@@ -736,7 +736,7 @@ suspend fun askMiora(text: String, history: List<ChatLine>, token: String, refre
     return try {
         suspend fun sendChat(): Pair<Int, String> = withContext(Dispatchers.IO) {
             val messages = JSONArray()
-            history.takeLast(12).forEach { messages.put(JSONObject().put("role", it.role).put("content", it.text)) }
+            history.takeLast(30).forEach { messages.put(JSONObject().put("role", it.role).put("content", it.text)) }
             val payload = JSONObject().put("messages", messages)
             if (conversationId.isNotBlank()) payload.put("conversation_id", conversationId)
             postMiora("chat", payload, activeAccess)
