@@ -1,0 +1,30 @@
+name: Miora personality evaluation tests
+
+on:
+  pull_request:
+    paths:
+      - "backend/tests/**"
+      - "backend/conversation_judgment.py"
+      - "backend/empathy_library.py"
+      - ".github/workflows/personality-evaluation.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "backend/tests/**"
+      - "backend/conversation_judgment.py"
+      - "backend/empathy_library.py"
+      - ".github/workflows/personality-evaluation.yml"
+
+jobs:
+  offline-evaluation-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run offline evaluator tests
+        working-directory: backend
+        run: python -m unittest discover -s tests -p "test_*.py" -v
