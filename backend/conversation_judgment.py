@@ -10,7 +10,7 @@ from difflib import SequenceMatcher
 
 
 SAFETY = re.compile(
-    r"\b(suicid\w*|kill myself|end my life|hurt myself|self[- ]harm|"
+    r"\b(suicid\w*|kill myself|end my life|hurt(?:ing)? myself|hurt(?:ing)? yourself|self[- ]harm|"
     r"hurt someone|kill someone|in immediate danger|can't keep myself safe)\b",
     re.IGNORECASE,
 )
