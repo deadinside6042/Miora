@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
+from empathy_library import EMPATHY_EXAMPLES
 from pydantic import BaseModel, Field
 
 load_dotenv()
@@ -853,7 +854,7 @@ def chat(
         )
         live_research = research_current_information(latest_question)
 
-    system_content = SYSTEM_PROMPT
+    system_content = SYSTEM_PROMPT + "\n\n" + EMPATHY_EXAMPLES
 
     profile_rows = supabase_request(
         f"/rest/v1/user_profiles?user_id=eq.{user_id}"
