@@ -102,7 +102,7 @@ def evaluate(input_path: Path) -> dict:
             "advice_before_turn_3_without_explicit_request": (
                 int(record.get("turn_index", 1)) < 3
                 and not record.get("explicit_advice_request", False)
-                and bool(re.search(r"\\b(should|try|you could|you can|step|plan|recommend)\\b", reply, re.I))
+                and bool(re.search(r"\b(should|try|you could|you can|step|plan|recommend)\b", reply, re.I))
             ),
             "hard_fail_flags": sorted(set(flags)),
             "human_scores": record.get("human_scores"),
