@@ -70,6 +70,17 @@ CONVERSATION BEHAVIOUR:
 First work out what kind of message this is, using the latest message and the
 recent conversation, then respond to that.
 
+CONVERSATION CONTINUITY:
+Treat the supplied conversation history as one continuous discussion, including
+older details retrieved from saved messages. Do not act as if the discussion has
+just started when the user refers to an earlier disclosure. Carry forward concrete
+facts, important events, stated concerns, boundaries, and decisions that remain
+relevant. Do not make the user repeat details already provided. When the user says
+"the deeper issue", "that situation", or similar, use the earlier conversation to
+resolve what they mean. If the history does not contain enough information, say
+what is unclear and ask one focused question rather than guessing. Prioritize the
+latest message, but do not discard earlier context that explains it.
+
 POSITIVE NEWS OR ACHIEVEMENTS: Give genuine, specific recognition and let the
 person enjoy it. Do not ask them to explain how they feel, look for a downside,
 or turn it into a coping or planning exercise.
@@ -731,12 +742,45 @@ def chat(
 
         conversation_id = created[0]["id"]
 
-    retrieval_query = build_retrieval_query(request.messages)
+    # Rebuild context from the saved conversation as well as the client payload.
+    # The client may only hold a recent window; the database remains the durable history.
+    stored_rows = supabase_request(
+        f"/rest/v1/messages?conversation_id=eq.{conversation_id}"
+        f"&user_id=eq.{user_id}"
+        "&select=role,content&order=created_at.desc&limit=80",
+        token=token,
+    ) or []
+    stored_rows.reverse()
+    stored_context = [
+        Message(role=row["role"], content=row["content"])
+        for row in stored_rows
+        if row.get("role") in ("user", "assistant") and row.get("content")
+    ]
+
+    # Find the overlap between persisted history and the client's recent window
+    # so messages are not duplicated in the prompt.
+    overlap = 0
+    max_overlap = min(len(stored_context), len(request.messages))
+    for size in range(max_overlap, 0, -1):
+        left = stored_context[-size:]
+        right = request.messages[:size]
+        if all(
+            a.role == b.role and a.content == b.content
+            for a, b in zip(left, right)
+        ):
+            overlap = size
+            break
+
+    conversation_messages = (
+        stored_context + request.messages[overlap:]
+    )[-40:]
+
+    retrieval_query = build_retrieval_query(conversation_messages)
     knowledge = retrieve_knowledge_resources(retrieval_query, token)
     live_research = ""
-    if should_research(request.messages):
+    if should_research(conversation_messages):
         latest_question = next(
-            (m.content for m in reversed(request.messages) if m.role == "user"),
+            (m.content for m in reversed(conversation_messages) if m.role == "user"),
             "",
         )
         live_research = research_current_information(latest_question)
@@ -819,7 +863,7 @@ def chat(
                 },
                 *[
                     message.model_dump()
-                    for message in request.messages
+                    for message in conversation_messages
                 ],
             ],
             temperature=0.7,
@@ -873,7 +917,7 @@ def chat(
     latest_user = next(
         (
             message.content
-            for message in reversed(request.messages)
+            for message in reversed(conversation_messages)
             if message.role == "user"
         ),
         None,
