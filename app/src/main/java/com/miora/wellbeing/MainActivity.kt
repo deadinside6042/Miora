@@ -163,7 +163,13 @@ fun MioraApp(context: Context) {
                             busy = false
                         }
                     }, profileNotice)
-                    else -> CompanionScreen(chat, message, { message = it }, busy, { userText ->
+                    else -> CompanionScreen(chat, message, { message = it }, busy, {
+                        // Start a fresh server conversation without deleting the previous one.
+                        conversationId = ""
+                        prefs.edit().remove("conversation_id").apply()
+                        chat = listOf(ChatLine("assistant", "Hi, I’m here with you. What’s on your mind today?"))
+                        message = ""
+                    }, { userText ->
                         chat = chat + ChatLine("user", userText)
                         message = ""
                         busy = true
@@ -473,7 +479,8 @@ fun JournalScreen(value: String, onChange: (String) -> Unit, onSave: () -> Unit,
     }
 }
 @Composable
-fun CompanionScreen(chat: List<ChatLine>, message: String, onMessage: (String) -> Unit, busy: Boolean, onSend: (String) -> Unit) {
+fun CompanionScreen(chat: List<ChatLine>, message: String, onMessage: (String) -> Unit, busy: Boolean, onNewChat: () -> Unit, onSend: (String) -> Unit) {
+    var showNewChatConfirmation by remember { mutableStateOf(false) }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = 0)
     val newestFirst = remember(chat) { chat.asReversed() }
 
@@ -482,11 +489,40 @@ fun CompanionScreen(chat: List<ChatLine>, message: String, onMessage: (String) -
     }
 
     Column(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp)) {
-            Text("A SUPPORTIVE CONVERSATION", color = Teal, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 1.5.sp)
-            Spacer(Modifier.height(5.dp))
-            Text("Talk with Miora", color = Ink, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            Text("A space to pause, reflect, and work things through.", color = Muted, fontSize = 13.sp)
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("A SUPPORTIVE CONVERSATION", color = Teal, fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 1.5.sp)
+                Spacer(Modifier.height(5.dp))
+                Text("Talk with Miora", color = Ink, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                Text("A space to pause, reflect, and work things through.", color = Muted, fontSize = 13.sp)
+            }
+            TextButton(
+                onClick = { showNewChatConfirmation = true },
+                enabled = !busy
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(Modifier.width(4.dp))
+                Text("New chat")
+            }
+        }
+        if (showNewChatConfirmation) {
+            AlertDialog(
+                onDismissRequest = { showNewChatConfirmation = false },
+                title = { Text("Start a new chat?") },
+                text = { Text("Your current conversation will be saved. Miora will start fresh without its messages.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showNewChatConfirmation = false
+                        onNewChat()
+                    }) { Text("Start new chat") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showNewChatConfirmation = false }) { Text("Cancel") }
+                }
+            )
         }
         LazyColumn(
             state = listState, reverseLayout = true,
