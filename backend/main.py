@@ -2,6 +2,8 @@
 import os
 import json
 import re
+import uuid
+import hashlib
 import urllib.request
 import urllib.error
 from typing import Literal, Optional
@@ -10,7 +12,7 @@ from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 from empathy_library import EMPATHY_EXAMPLES
-from conversation_judgment import build_conversation_guidance
+from conversation_judgment import build_conversation_guidance, analyze_conversation
 from pydantic import BaseModel, Field
 
 load_dotenv()
@@ -856,6 +858,7 @@ def chat(
         live_research = research_current_information(latest_question)
 
     conversation_guidance = build_conversation_guidance(conversation_messages)
+    judgment_snapshot = analyze_conversation(conversation_messages)
     system_content = (
         SYSTEM_PROMPT
         + "\n\nCONVERSATION JUDGMENT LAYER (decides how to respond; this is separate from factual knowledge):\n"
@@ -925,6 +928,33 @@ def chat(
             + knowledge
         )
 
+    diagnostic_enabled = os.getenv("MIORA_DIAGNOSTICS", "").strip().lower() in ("1", "true", "yes", "on")
+    diagnostic_id = str(uuid.uuid4())
+    model_name = os.getenv("OPENROUTER_MODEL", "")
+
+    if diagnostic_enabled:
+        # Deliberately exclude message text, profile data, and the assembled prompt:
+        # Render logs are not an appropriate place for private conversation content.
+        prompt_fingerprint = hashlib.sha256(system_content.encode("utf-8")).hexdigest()
+        print(json.dumps({
+            "event": "miora_diagnostic_request",
+            "diagnostic_id": diagnostic_id,
+            "model": model_name,
+            "temperature": 0.7,
+            "max_tokens": 2000,
+            "conversation_message_count": len(conversation_messages),
+            "user_message_count": sum(1 for item in conversation_messages if item.role == "user"),
+            "assistant_message_count": sum(1 for item in conversation_messages if item.role == "assistant"),
+            "judgment": judgment_snapshot,
+            "system_prompt_chars": len(system_content),
+            "system_prompt_sha256": prompt_fingerprint,
+            "base_prompt_chars": len(SYSTEM_PROMPT),
+            "judgment_guidance_chars": len(conversation_guidance),
+            "empathy_examples_chars": len(EMPATHY_EXAMPLES),
+            "knowledge_chars": len(knowledge),
+            "live_research_chars": len(live_research),
+        }, ensure_ascii=False, sort_keys=True), flush=True)
+
     try:
         client = OpenAI(
             api_key=api_key,
@@ -932,7 +962,7 @@ def chat(
         )
 
         response = client.chat.completions.create(
-            model=os.getenv("OPENROUTER_MODEL"),
+            model=model_name,
             messages=[
                 {
                     "role": "system",
@@ -949,6 +979,18 @@ def chat(
 
         message = response.choices[0].message
         content = message.content
+
+        if diagnostic_enabled:
+            usage = getattr(response, "usage", None)
+            print(json.dumps({
+                "event": "miora_diagnostic_response",
+                "diagnostic_id": diagnostic_id,
+                "response_model": getattr(response, "model", None),
+                "finish_reason": getattr(response.choices[0], "finish_reason", None),
+                "prompt_tokens": getattr(usage, "prompt_tokens", None) if usage else None,
+                "completion_tokens": getattr(usage, "completion_tokens", None) if usage else None,
+                "total_tokens": getattr(usage, "total_tokens", None) if usage else None,
+            }, ensure_ascii=False, sort_keys=True), flush=True)
 
         if isinstance(content, list):
             content = " ".join(
