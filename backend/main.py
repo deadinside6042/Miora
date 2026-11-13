@@ -930,7 +930,7 @@ def chat(
 
     diagnostic_enabled = os.getenv("MIORA_DIAGNOSTICS", "").strip().lower() in ("1", "true", "yes", "on")
     diagnostic_id = str(uuid.uuid4())
-    model_name = os.getenv("OPENROUTER_MODEL", "")
+    model_name = os.getenv("OPENROUTER_MODEL")
 
     if diagnostic_enabled:
         # Deliberately exclude message text, profile data, and the assembled prompt:
