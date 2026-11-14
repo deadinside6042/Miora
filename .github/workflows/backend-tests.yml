@@ -1,3 +1,4 @@
+# CI entry point for backend changes; shared with the main branch.
 name: Backend tests
 
 on:
