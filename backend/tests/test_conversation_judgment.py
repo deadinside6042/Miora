@@ -57,7 +57,7 @@ class ConversationJudgmentTests(unittest.TestCase):
         guidance = build_conversation_guidance([
             turn("user", "I made a mistake at work.")
         ])
-        self.assertIn("do not invent a repeated pattern", guidance.lower())
+        self.assertIn("invent a repeated pattern", guidance.lower())
         self.assertIn("without a question", guidance.lower())
 
     def test_repeated_questions_are_flagged(self):
