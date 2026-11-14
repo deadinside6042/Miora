@@ -62,10 +62,34 @@ def _role(message):
 
 
 def _question_text(message):
+    """Return the last complete question in an assistant turn, even if text follows it."""
     content = _content(message)
-    if "?" not in content:
+    matches = re.findall(r"([^?]{1,240}\?)", content)
+    if not matches:
         return ""
-    return re.sub(r"\s+", " ", content.split("?")[-2] + "?").strip()
+    return re.sub(r"\s+", " ", matches[-1]).strip()
+
+
+def _conversation_ledger(messages: list) -> dict:
+    """Describe observable turn structure without guessing user intent or feelings."""
+    recent = list(messages or [])[-12:]
+    latest_user_index = next(
+        (i for i in range(len(recent) - 1, -1, -1) if _role(recent[i]) == "user"),
+        None,
+    )
+    prior_assistant = None
+    if latest_user_index is not None:
+        prior_assistant = next(
+            (recent[i] for i in range(latest_user_index - 1, -1, -1)
+             if _role(recent[i]) == "assistant"),
+            None,
+        )
+    question = _question_text(prior_assistant) if prior_assistant else ""
+    return {
+        "previous_assistant_question": question,
+        "previous_assistant_question_present": bool(question),
+        "ledger_scope": "recent_turn_structure_only",
+    }
 
 
 def analyze_conversation(messages: list) -> dict:
@@ -83,9 +107,9 @@ def analyze_conversation(messages: list) -> dict:
         not safety_now and len(latest.split()) <= 12
         and bool(SAFETY.search(previous_assistant))
     )
+    ledger = _conversation_ledger(messages)
     contextual_follow_through = (
-        bool(previous_assistant)
-        and previous_assistant.rstrip().endswith("?")
+        ledger["previous_assistant_question_present"]
         and not safety_now
         and not safety_follow_through
     )
@@ -155,6 +179,7 @@ def analyze_conversation(messages: list) -> dict:
 
     return {
         "primary_job": primary_job,
+        "turn_ledger": ledger,
         "safety_override": safety_now or safety_follow_through,
         "explicit_request": primary_job in ("requested_skill", "requested_guidance", "understanding"),
         "contextual_follow_through": contextual_follow_through or safety_follow_through,
@@ -238,6 +263,14 @@ def build_conversation_guidance(messages: list) -> str:
             "a question or reflection."
         )
         + "\nADVICE GATE: " + plan["advice_gate"] + ". Do not give unsolicited fixes.\n"
-        + "EMOTION SIGNALS: Treat any listed signals as tentative clues, not facts. "
+        + "GROUNDING CHECK: Use only facts the user has actually stated. Do not "
+          "upgrade a possibility into a fact, infer a motive, or invent a repeated "
+          "pattern. If you interpret, mark it as a possibility and keep it brief. "
+          "Do not turn every reply into an emotion label plus a question. A direct, "
+          "specific response without a question is often better.\n"
+        + "TURN LEDGER: " + json.dumps(plan["turn_ledger"], ensure_ascii=False, sort_keys=True)
+        + "\nTreat the listed question as conversational context, not proof that "
+          "the latest message answered it. Decide from the user's actual words."
+        + "\nEMOTION SIGNALS: Treat any listed signals as tentative clues, not facts. "
           "Do not state them as a diagnosis or over-explain them."
     )

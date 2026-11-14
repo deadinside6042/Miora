@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
-from empathy_library import EMPATHY_EXAMPLES
 from conversation_judgment import build_conversation_guidance, analyze_conversation
 from pydantic import BaseModel, Field
 
@@ -864,7 +863,6 @@ def chat(
         + "\n\nCONVERSATION JUDGMENT LAYER (decides how to respond; this is separate from factual knowledge):\n"
         + conversation_guidance
         + "\n\n"
-        + EMPATHY_EXAMPLES
     )
 
     profile_rows = supabase_request(
@@ -950,7 +948,6 @@ def chat(
             "system_prompt_sha256": prompt_fingerprint,
             "base_prompt_chars": len(SYSTEM_PROMPT),
             "judgment_guidance_chars": len(conversation_guidance),
-            "empathy_examples_chars": len(EMPATHY_EXAMPLES),
             "knowledge_chars": len(knowledge),
             "live_research_chars": len(live_research),
         }, ensure_ascii=False, sort_keys=True), flush=True)
