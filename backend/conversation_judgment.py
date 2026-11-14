@@ -87,7 +87,7 @@ def _conversation_ledger(messages: list) -> dict:
     question = _question_text(prior_assistant) if prior_assistant else ""
     return {
         "previous_assistant_question": question,
-        "has_unanswered_assistant_question": bool(question),
+        "previous_assistant_question_present": bool(question),
         "ledger_scope": "recent_turn_structure_only",
     }
 
@@ -109,7 +109,7 @@ def analyze_conversation(messages: list) -> dict:
     )
     ledger = _conversation_ledger(messages)
     contextual_follow_through = (
-        ledger["has_unanswered_assistant_question"]
+        ledger["previous_assistant_question_present"]
         and not safety_now
         and not safety_follow_through
     )
