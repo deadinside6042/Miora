@@ -42,6 +42,24 @@ class ConversationJudgmentTests(unittest.TestCase):
         ])
         self.assertTrue(plan["contextual_follow_through"])
 
+    def test_question_is_tracked_when_assistant_text_follows_it(self):
+        plan = analyze_conversation([
+            turn("assistant", "I can see why that matters. What happened? Take your time."),
+            turn("user", "It was a stupid mistake."),
+        ])
+        self.assertTrue(plan["contextual_follow_through"])
+        self.assertEqual(
+            plan["turn_ledger"]["previous_assistant_question"],
+            "What happened?"
+        )
+
+    def test_grounding_guidance_rejects_invented_patterns(self):
+        guidance = build_conversation_guidance([
+            turn("user", "I made a mistake at work.")
+        ])
+        self.assertIn("do not invent a repeated pattern", guidance.lower())
+        self.assertIn("without a question", guidance.lower())
+
     def test_repeated_questions_are_flagged(self):
         plan = analyze_conversation([
             turn("assistant", "What happened?"),
