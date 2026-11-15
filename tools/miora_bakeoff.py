@@ -190,12 +190,19 @@ def run_one(client: httpx.Client, model: str,
     previous_opener = ""
     model_turn = 0
 
-    for role, content in transcript:
+    for index, (role, content) in enumerate(transcript):
         if role == "assistant":
             messages.append({"role": "assistant", "content": content})
             continue
         messages.append({"role": "user", "content": content})
         user_history.append(content)
+        # If the next transcript event is a scripted assistant reply, replay
+        # it as context and do not ask the model to answer this same turn.
+        next_is_scripted_reply = (
+            index + 1 < len(transcript) and transcript[index + 1][0] == "assistant"
+        )
+        if next_is_scripted_reply:
+            continue
         model_turn += 1
         try:
             raw, usage, latency = call_model(client, model, messages)
@@ -274,7 +281,14 @@ def main() -> int:
     if unknown:
         parser.error(f"unknown transcript(s): {', '.join(unknown)}")
     total_calls = len(models) * args.samples * sum(
-        sum(role == "user" for role, _ in TRANSCRIPTS[name]) for name in names
+        sum(
+            role == "user" and not (
+                index + 1 < len(TRANSCRIPTS[name])
+                and TRANSCRIPTS[name][index + 1][0] == "assistant"
+            )
+            for index, (role, _) in enumerate(TRANSCRIPTS[name])
+        )
+        for name in names
     )
     print(f"Planned model requests: {total_calls}")
     print("All six scenarios use correct speaker roles. Synthetic data only.")
