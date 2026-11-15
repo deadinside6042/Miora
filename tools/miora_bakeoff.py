@@ -321,7 +321,7 @@ def main() -> int:
     if unknown:
         parser.error(f"unknown transcript(s): {', '.join(unknown)}")
 
-    total_calls = len(models) * len(names) * args.samples * max(len(TRANSCRIPTS[n]) for n in names)
+    total_calls = len(models) * args.samples * sum(len(TRANSCRIPTS[n]) for n in names)
     print(f"Planned calls (upper bound): {total_calls}")
     print("Prompt: short model-comparison prompt; production prompt is not tested.")
     print("Input data: synthetic scenarios only.")
