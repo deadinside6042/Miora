@@ -46,11 +46,11 @@ conversational.
 Return only this JSON object: {"reply": "your message to the person"}.
 Do not include analysis, a ledger, or any other fields.""",
     "C_full_ledger": """You are Miora, a warm, plain-spoken conversational companion.
-Respond to what the person actually said, in natural language. Do not assume
-history, motives or feelings they have not stated; ask or wonder instead.
-If they dodge a question, don't repeat it; respond to what they did say.
-Do not turn every reply into a question. Avoid stock phrases and repeated
-reflections. Be concise and conversational.
+Respond naturally to what the person actually said. Do not assume history,
+motives or feelings they have not stated. If they dodge a question, don't
+repeat it; respond to what they did say. Do not turn every reply into a
+question. Avoid stock phrases and repeated reflections. Be concise and
+conversational.
 
 Return ONLY a JSON object in this exact shape:
 {
@@ -175,8 +175,24 @@ def score_turn(raw: str, parsed: dict[str, Any] | None, mode: str,
     metrics: dict[str, Any] = {
         "json_expected": mode != "A_plain",
         "json_ok": None if mode == "A_plain" else parsed is not None,
+        "format_ok": None,
         "reply": "",
     }
+    if mode == "B_reply_json":
+        metrics["format_ok"] = bool(
+            parsed and isinstance(parsed.get("reply"), str)
+        )
+    elif mode == "C_full_ledger":
+        read = parsed.get("read") if parsed and isinstance(parsed.get("read"), dict) else {}
+        metrics["format_ok"] = bool(
+            parsed
+            and isinstance(parsed.get("reply"), str)
+            and isinstance(read.get("stated"), list)
+            and isinstance(read.get("possible"), list)
+            and isinstance(read.get("unknown"), list)
+            and read.get("last_question_status") in {"answered", "dodged", "ignored", "none"}
+            and read.get("move") in {"reflect", "ask", "offer", "reassure", "stay_with"}
+        )
     if mode == "A_plain":
         reply = raw.strip()
     elif mode == "B_reply_json":
@@ -263,7 +279,7 @@ def run_one(client: httpx.Client, model: str, mode: str,
 def aggregate(records: list[dict[str, Any]]) -> dict[str, Any]:
     total: dict[str, Any] = {
         "runs": len(records), "turns": 0, "json_expected_turns": 0,
-        "json_ok": 0, "bad_quotes": 0, "history_word_flags": 0,
+        "json_ok": 0, "format_ok": 0, "bad_quotes": 0, "history_word_flags": 0,
         "same_move": 0, "high_opener_similarity": 0, "errors": 0,
         "latencies": [], "input_tokens": 0, "output_tokens": 0,
         "reported_cost": 0.0,
@@ -275,6 +291,7 @@ def aggregate(records: list[dict[str, Any]]) -> dict[str, Any]:
             metric = turn.get("metrics", {})
             total["json_expected_turns"] += int(bool(metric.get("json_expected")))
             total["json_ok"] += int(metric.get("json_ok") is True)
+            total["format_ok"] += int(metric.get("format_ok") is True)
             total["bad_quotes"] += int(metric.get("bad_quotes", 0))
             total["history_word_flags"] += int(bool(metric.get("unsupported_history_word_flag")))
             total["same_move"] += int(bool(metric.get("same_move_as_previous")))
