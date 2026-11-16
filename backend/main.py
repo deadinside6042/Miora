@@ -780,9 +780,13 @@ def chat(
 ):
     token, user_id = current_user(authorization)
 
-    api_key = os.getenv("OPENROUTER_API_KEY")
+    # Provider-neutral configuration. Existing OpenRouter settings remain the
+    # fallback so this change does not alter the live provider by itself.
+    api_key = os.getenv("AI_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+    api_base_url = os.getenv("AI_BASE_URL", "https://openrouter.ai/api/v1")
+    model_name = os.getenv("AI_MODEL") or os.getenv("OPENROUTER_MODEL")
 
-    if not api_key:
+    if not api_key or not model_name:
         raise HTTPException(
             status_code=503,
             detail="AI service is not configured",
@@ -930,7 +934,6 @@ def chat(
 
     diagnostic_enabled = os.getenv("MIORA_DIAGNOSTICS", "").strip().lower() in ("1", "true", "yes", "on")
     diagnostic_id = str(uuid.uuid4())
-    model_name = os.getenv("OPENROUTER_MODEL")
 
     if diagnostic_enabled:
         # Deliberately exclude message text, profile data, and the assembled prompt:
@@ -958,7 +961,7 @@ def chat(
     try:
         client = OpenAI(
             api_key=api_key,
-            base_url="https://openrouter.ai/api/v1",
+            base_url=api_base_url,
         )
 
         response = client.chat.completions.create(
