@@ -23,6 +23,9 @@ import httpx
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODELS = [
+    "thinkingmachines/inkling-2-small:free",
+    "baidu/ernie-5.5-flash-preview:free",
+    "nvidia/nemotron-3.5-super-vl:free",
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
     "nvidia/nemotron-3.5-lightning:free",
     "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -274,6 +277,14 @@ def run_one(client: httpx.Client, model: str, mode: str,
                 "error": f"{type(exc).__name__}: {exc}",
             })
             messages.append({"role": "assistant", "content": "[model request failed]"})
+            status_code = getattr(getattr(exc, "response", None), "status_code", None)
+            if status_code == 429:
+                print(
+                    f"Rate limited by {model}; stopping this scenario now "
+                    "to avoid wasting more requests.",
+                    file=sys.stderr,
+                )
+                break
     return {"model": model, "mode": mode, "turns": rows}
 
 def aggregate(records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -315,7 +326,10 @@ def main() -> int:
     parser.add_argument("--modes", nargs="+", default=["all"],
                         help=f"Prompt modes: {', '.join(MODES)} or all")
     parser.add_argument("--transcripts", nargs="+", default=["all"])
-    parser.add_argument("--delay", type=float, default=0.5)
+    parser.add_argument(
+        "--delay", type=float, default=3.2,
+        help="Seconds between scenarios (default 3.2 to stay below 20 requests/minute).",
+    )
     parser.add_argument("--output", default="ab_results.jsonl")
     parser.add_argument("--summary", default="ab_summary.json")
     args = parser.parse_args()
