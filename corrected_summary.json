@@ -1,0 +1,58 @@
+{
+  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": {
+    "runs": 6,
+    "turns": 14,
+    "json_ok": 7,
+    "bad_quotes": 0,
+    "history_word_flags": 0,
+    "same_move": 0,
+    "high_opener_similarity": 0,
+    "errors": 0,
+    "input_tokens": 4415,
+    "output_tokens": 11416,
+    "reported_cost": 0.0,
+    "mean_latency_seconds": 8.351
+  },
+  "nvidia/nemotron-3.5-lightning:free": {
+    "runs": 6,
+    "turns": 14,
+    "json_ok": 1,
+    "bad_quotes": 0,
+    "history_word_flags": 0,
+    "same_move": 0,
+    "high_opener_similarity": 0,
+    "errors": 0,
+    "input_tokens": 4147,
+    "output_tokens": 11572,
+    "reported_cost": 0.0,
+    "mean_latency_seconds": 6.963
+  },
+  "nvidia/nemotron-3-ultra-550b-a55b:free": {
+    "runs": 6,
+    "turns": 14,
+    "json_ok": 3,
+    "bad_quotes": 0,
+    "history_word_flags": 1,
+    "same_move": 0,
+    "high_opener_similarity": 0,
+    "errors": 0,
+    "input_tokens": 4384,
+    "output_tokens": 1750,
+    "reported_cost": 0.0,
+    "mean_latency_seconds": 4.677
+  },
+  "dots-studio/dots-3-note-preview:free": {
+    "runs": 6,
+    "turns": 14,
+    "json_ok": 2,
+    "bad_quotes": 0,
+    "history_word_flags": 0,
+    "same_move": 0,
+    "high_opener_similarity": 0,
+    "errors": 1,
+    "input_tokens": 3761,
+    "output_tokens": 4902,
+    "reported_cost": 0.0,
+    "mean_latency_seconds": 6.346
+  }
+}
