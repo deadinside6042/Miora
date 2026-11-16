@@ -156,7 +156,12 @@ def call_model(client: httpx.Client, model: str,
         json={"model": model, "messages": messages, "temperature": 0.7, "max_tokens": 900},
     )
     elapsed = time.perf_counter() - started
-    response.raise_for_status()
+    if response.is_error:
+        raise httpx.HTTPStatusError(
+            f"OpenRouter {response.status_code}: {response.text[:1500]}",
+            request=response.request,
+            response=response,
+        )
     payload = response.json()
     choices = payload.get("choices") or []
     if not choices:
@@ -280,7 +285,7 @@ def run_one(client: httpx.Client, model: str, mode: str,
             })
             messages.append({"role": "assistant", "content": "[model request failed]"})
             status_code = getattr(getattr(exc, "response", None), "status_code", None)
-            if status_code == 429:
+            if status_code in {403, 429}:
                 print(
                     f"Rate limited by {model}; stopping this scenario now "
                     "to avoid wasting more requests.",
