@@ -228,7 +228,7 @@ def score_turn(raw: str, parsed: dict[str, Any] | None, mode: str,
     return metrics
 
 def run_one(client: httpx.Client, model: str, mode: str,
-            transcript: list[tuple[str, str]]) -> dict[str, Any]:
+            transcript: list[tuple[str, str]], delay: float = 3.2) -> dict[str, Any]:
     messages: list[dict[str, str]] = [{"role": "system", "content": PROMPTS[mode]}]
     user_history: list[str] = []
     rows: list[dict[str, Any]] = []
@@ -266,6 +266,8 @@ def run_one(client: httpx.Client, model: str, mode: str,
                 "latency_seconds": round(latency, 3), "usage": usage,
                 "metrics": metrics, "error": None,
             })
+            if delay:
+                time.sleep(delay)
         except Exception as exc:
             rows.append({
                 "turn": model_turn, "user": content, "raw": None, "parsed": None,
@@ -328,7 +330,7 @@ def main() -> int:
     parser.add_argument("--transcripts", nargs="+", default=["all"])
     parser.add_argument(
         "--delay", type=float, default=3.2,
-        help="Seconds between scenarios (default 3.2 to stay below 20 requests/minute).",
+        help="Seconds between model requests (default 3.2 to stay below 20 requests/minute).",
     )
     parser.add_argument("--output", default="ab_results.jsonl")
     parser.add_argument("--summary", default="ab_summary.json")
@@ -370,7 +372,7 @@ def main() -> int:
                     for name in names:
                         for sample in range(1, args.samples + 1):
                             print(f"Running {model} | {mode} | {name} | sample {sample}/{args.samples}")
-                            result = run_one(client, model, mode, TRANSCRIPTS[name])
+                            result = run_one(client, model, mode, TRANSCRIPTS[name], args.delay)
                             record = {
                                 "model": model, "mode": mode, "transcript": name,
                                 "sample": sample, **result,
@@ -378,8 +380,6 @@ def main() -> int:
                             output.write(json.dumps(record, ensure_ascii=False) + "\n")
                             output.flush()
                             records.append(result)
-                            if args.delay:
-                                time.sleep(args.delay)
                 summaries[f"{model} | {mode}"] = aggregate(records)
     Path(args.summary).write_text(
         json.dumps(summaries, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
