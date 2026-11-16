@@ -22,11 +22,14 @@ from typing import Any
 import httpx
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
+# Free endpoints only: "--models all" must never incur API charges.
+# Keep synthetic test conversations only. Do not send real or sensitive Miora chats
+# to free NVIDIA endpoints; their OpenRouter pages carry a data-use notice.
 MODELS = [
-    "anthropic/claude-haiku-5.5",
-    "meta-llama/llama-3.3-70b-instruct",
-    "google/gemini-3.8-flash",
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "nvidia/nemotron-3.5-lightning:free",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "dots-studio/dots-3-note-preview:free",
 ]
 
 SYSTEM = """You are Miora, a warm, plain-spoken conversational companion.
