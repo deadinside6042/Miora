@@ -22,9 +22,6 @@ from typing import Any
 import httpx
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
-# Free endpoints only: "--models all" must never incur API charges.
-# Keep synthetic test conversations only. Do not send real or sensitive Miora chats
-# to free NVIDIA endpoints; their OpenRouter pages carry a data-use notice.
 MODELS = [
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
     "nvidia/nemotron-3.5-lightning:free",
@@ -32,12 +29,28 @@ MODELS = [
     "dots-studio/dots-3-note-preview:free",
 ]
 
-SYSTEM = """You are Miora, a warm, plain-spoken conversational companion.
-Respond to what the person actually said, in natural language. Do not assume
-history, motives or feelings they have not stated; ask or wonder instead.
-If they dodge a question, don't repeat it; respond to what they did say.
-Do not turn every reply into a question. Avoid stock phrases and repeated
-reflections. Be concise and conversational.
+PROMPTS = {
+    "A_plain": """You are Miora, a warm, plain-spoken conversational companion.
+Respond naturally to what the person actually said. Do not assume history,
+motives or feelings they have not stated. If they dodge a question, don't
+repeat it; respond to what they did say. Do not turn every reply into a
+question. Avoid stock phrases and repeated reflections. Be concise and
+conversational. Reply only with the message you would say to the person.""",
+    "B_reply_json": """You are Miora, a warm, plain-spoken conversational companion.
+Respond naturally to what the person actually said. Do not assume history,
+motives or feelings they have not stated. If they dodge a question, don't
+repeat it; respond to what they did say. Do not turn every reply into a
+question. Avoid stock phrases and repeated reflections. Be concise and
+conversational.
+
+Return only this JSON object: {"reply": "your message to the person"}.
+Do not include analysis, a ledger, or any other fields.""",
+    "C_full_ledger": """You are Miora, a warm, plain-spoken conversational companion.
+Respond naturally to what the person actually said. Do not assume history,
+motives or feelings they have not stated. If they dodge a question, don't
+repeat it; respond to what they did say. Do not turn every reply into a
+question. Avoid stock phrases and repeated reflections. Be concise and
+conversational.
 
 Return ONLY a JSON object in this exact shape:
 {
@@ -51,7 +64,9 @@ Return ONLY a JSON object in this exact shape:
   "reply": "the message Miora says to the person"
 }
 Quotes must be exact substrings of the user's messages. Do not invent facts.
-"""
+""",
+}
+MODES = list(PROMPTS)
 
 # Each item is an actual speaker turn. Scripted assistant turns are fixed
 # context, not misrepresented as things the user said.
@@ -153,40 +168,65 @@ def call_model(client: httpx.Client, model: str,
     return str(value), payload.get("usage") or {}, elapsed
 
 
-def score_turn(user_text: str, user_history: list[str],
-               parsed: dict[str, Any] | None, previous_move: str | None,
+def score_turn(raw: str, parsed: dict[str, Any] | None, mode: str,
+               user_history: list[str], previous_move: str | None,
                previous_opener: str) -> dict[str, Any]:
-    metrics: dict[str, Any] = {"json_ok": parsed is not None}
-    if parsed is None:
-        return metrics
-    read = parsed.get("read") if isinstance(parsed.get("read"), dict) else {}
-    reply = parsed.get("reply") if isinstance(parsed.get("reply"), str) else ""
-    stated = read.get("stated") if isinstance(read.get("stated"), list) else []
-    quotes = [
-        item.get("quote", "") for item in stated
-        if isinstance(item, dict) and isinstance(item.get("quote", ""), str)
-    ]
-    full_history = "\n".join(user_history).casefold()
-    metrics.update({
-        "bad_quotes": sum(1 for q in quotes if not q or q.casefold() not in full_history),
-        "unsupported_history_word_flag": bool(HISTORY_WORDS.search(reply))
-            and not bool(HISTORY_WORDS.search(full_history)),
-        "move": read.get("move"),
-        "same_move_as_previous": bool(previous_move and read.get("move") == previous_move),
-        "opener_similarity": round(
-            difflib.SequenceMatcher(None, opener(reply), previous_opener).ratio()
-            if previous_opener and reply else 0.0, 2
-        ),
-        "question_count": reply.count("?"),
-        "reply": reply,
-        "last_question_status": read.get("last_question_status"),
-    })
+    # Formatting compliance is separate from conversational quality.
+    metrics: dict[str, Any] = {
+        "json_expected": mode != "A_plain",
+        "json_ok": None if mode == "A_plain" else parsed is not None,
+        "format_ok": None,
+        "reply": "",
+    }
+    if mode == "B_reply_json":
+        metrics["format_ok"] = bool(
+            parsed and isinstance(parsed.get("reply"), str)
+        )
+    elif mode == "C_full_ledger":
+        read = parsed.get("read") if parsed and isinstance(parsed.get("read"), dict) else {}
+        metrics["format_ok"] = bool(
+            parsed
+            and isinstance(parsed.get("reply"), str)
+            and isinstance(read.get("stated"), list)
+            and isinstance(read.get("possible"), list)
+            and isinstance(read.get("unknown"), list)
+            and read.get("last_question_status") in {"answered", "dodged", "ignored", "none"}
+            and read.get("move") in {"reflect", "ask", "offer", "reassure", "stay_with"}
+        )
+    if mode == "A_plain":
+        reply = raw.strip()
+    elif mode == "B_reply_json":
+        reply = parsed.get("reply", "") if parsed else ""
+    else:
+        reply = parsed.get("reply", "") if parsed else ""
+    if not isinstance(reply, str):
+        reply = ""
+    metrics["reply"] = reply
+    if mode == "C_full_ledger" and parsed:
+        read = parsed.get("read") if isinstance(parsed.get("read"), dict) else {}
+        stated = read.get("stated") if isinstance(read.get("stated"), list) else []
+        quotes = [
+            item.get("quote", "") for item in stated
+            if isinstance(item, dict) and isinstance(item.get("quote", ""), str)
+        ]
+        full_history = "\n".join(user_history).casefold()
+        metrics.update({
+            "bad_quotes": sum(1 for q in quotes if not q or q.casefold() not in full_history),
+            "unsupported_history_word_flag": bool(HISTORY_WORDS.search(reply))
+                and not bool(HISTORY_WORDS.search(full_history)),
+            "move": read.get("move"),
+            "same_move_as_previous": bool(previous_move and read.get("move") == previous_move),
+            "opener_similarity": round(
+                difflib.SequenceMatcher(None, opener(reply), previous_opener).ratio()
+                if previous_opener and reply else 0.0, 2
+            ),
+            "last_question_status": read.get("last_question_status"),
+        })
     return metrics
 
-
-def run_one(client: httpx.Client, model: str,
+def run_one(client: httpx.Client, model: str, mode: str,
             transcript: list[tuple[str, str]]) -> dict[str, Any]:
-    messages: list[dict[str, str]] = [{"role": "system", "content": SYSTEM}]
+    messages: list[dict[str, str]] = [{"role": "system", "content": PROMPTS[mode]}]
     user_history: list[str] = []
     rows: list[dict[str, Any]] = []
     previous_move: str | None = None
@@ -199,8 +239,6 @@ def run_one(client: httpx.Client, model: str,
             continue
         messages.append({"role": "user", "content": content})
         user_history.append(content)
-        # If the next transcript event is a scripted assistant reply, replay
-        # it as context and do not ask the model to answer this same turn.
         next_is_scripted_reply = (
             index + 1 < len(transcript) and transcript[index + 1][0] == "assistant"
         )
@@ -209,16 +247,17 @@ def run_one(client: httpx.Client, model: str,
         model_turn += 1
         try:
             raw, usage, latency = call_model(client, model, messages)
-            parsed = parse_json(raw)
-            metrics = score_turn(content, user_history, parsed, previous_move, previous_opener)
-            reply = parsed.get("reply", "") if parsed else raw
-            if not isinstance(reply, str):
-                reply = raw
-            if parsed:
+            parsed = parse_json(raw) if mode != "A_plain" else None
+            metrics = score_turn(raw, parsed, mode, user_history, previous_move, previous_opener)
+            reply = metrics["reply"]
+            if mode == "C_full_ledger" and parsed:
                 read = parsed.get("read") if isinstance(parsed.get("read"), dict) else {}
                 previous_move = read.get("move") if isinstance(read.get("move"), str) else None
+            if reply:
                 previous_opener = opener(reply)
-            messages.append({"role": "assistant", "content": reply})
+                messages.append({"role": "assistant", "content": reply})
+            else:
+                messages.append({"role": "assistant", "content": raw})
             rows.append({
                 "turn": model_turn, "user": content, "raw": raw, "parsed": parsed,
                 "latency_seconds": round(latency, 3), "usage": usage,
@@ -227,18 +266,22 @@ def run_one(client: httpx.Client, model: str,
         except Exception as exc:
             rows.append({
                 "turn": model_turn, "user": content, "raw": None, "parsed": None,
-                "latency_seconds": None, "usage": {}, "metrics": {"json_ok": False},
+                "latency_seconds": None, "usage": {}, "metrics": {
+                    "json_expected": mode != "A_plain",
+                    "json_ok": None if mode == "A_plain" else False,
+                    "reply": "",
+                },
                 "error": f"{type(exc).__name__}: {exc}",
             })
             messages.append({"role": "assistant", "content": "[model request failed]"})
-    return {"model": model, "turns": rows}
-
+    return {"model": model, "mode": mode, "turns": rows}
 
 def aggregate(records: list[dict[str, Any]]) -> dict[str, Any]:
     total: dict[str, Any] = {
-        "runs": len(records), "turns": 0, "json_ok": 0, "bad_quotes": 0,
-        "history_word_flags": 0, "same_move": 0, "high_opener_similarity": 0,
-        "errors": 0, "latencies": [], "input_tokens": 0, "output_tokens": 0,
+        "runs": len(records), "turns": 0, "json_expected_turns": 0,
+        "json_ok": 0, "format_ok": 0, "bad_quotes": 0, "history_word_flags": 0,
+        "same_move": 0, "high_opener_similarity": 0, "errors": 0,
+        "latencies": [], "input_tokens": 0, "output_tokens": 0,
         "reported_cost": 0.0,
     }
     for record in records:
@@ -246,7 +289,9 @@ def aggregate(records: list[dict[str, Any]]) -> dict[str, Any]:
             total["turns"] += 1
             total["errors"] += int(bool(turn.get("error")))
             metric = turn.get("metrics", {})
-            total["json_ok"] += int(bool(metric.get("json_ok")))
+            total["json_expected_turns"] += int(bool(metric.get("json_expected")))
+            total["json_ok"] += int(metric.get("json_ok") is True)
+            total["format_ok"] += int(metric.get("format_ok") is True)
             total["bad_quotes"] += int(metric.get("bad_quotes", 0))
             total["history_word_flags"] += int(bool(metric.get("unsupported_history_word_flag")))
             total["same_move"] += int(bool(metric.get("same_move_as_previous")))
@@ -263,15 +308,16 @@ def aggregate(records: list[dict[str, Any]]) -> dict[str, Any]:
     total["reported_cost"] = round(total["reported_cost"], 6)
     return total
 
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--samples", type=int, default=1)
     parser.add_argument("--models", nargs="+", default=["all"])
+    parser.add_argument("--modes", nargs="+", default=["all"],
+                        help=f"Prompt modes: {', '.join(MODES)} or all")
     parser.add_argument("--transcripts", nargs="+", default=["all"])
     parser.add_argument("--delay", type=float, default=0.5)
-    parser.add_argument("--output", default="corrected_results.jsonl")
-    parser.add_argument("--summary", default="corrected_summary.json")
+    parser.add_argument("--output", default="ab_results.jsonl")
+    parser.add_argument("--summary", default="ab_summary.json")
     args = parser.parse_args()
     if args.samples < 1:
         parser.error("--samples must be at least 1")
@@ -279,11 +325,15 @@ def main() -> int:
         print("ERROR: set OPENROUTER_API_KEY in your environment.", file=sys.stderr)
         return 2
     models = MODELS if args.models == ["all"] else args.models
+    modes = MODES if args.modes == ["all"] else args.modes
+    unknown_modes = sorted(set(modes) - set(MODES))
+    if unknown_modes:
+        parser.error(f"unknown mode(s): {', '.join(unknown_modes)}")
     names = list(TRANSCRIPTS) if args.transcripts == ["all"] else args.transcripts
     unknown = sorted(set(names) - set(TRANSCRIPTS))
     if unknown:
         parser.error(f"unknown transcript(s): {', '.join(unknown)}")
-    total_calls = len(models) * args.samples * sum(
+    turns_per_run = sum(
         sum(
             role == "user" and not (
                 index + 1 < len(TRANSCRIPTS[name])
@@ -293,28 +343,30 @@ def main() -> int:
         )
         for name in names
     )
+    total_calls = len(models) * len(modes) * args.samples * turns_per_run
     print(f"Planned model requests: {total_calls}")
-    print("All six scenarios use correct speaker roles. Synthetic data only.")
+    print(f"Models: {len(models)} | Prompt modes: {', '.join(modes)} | Scenarios: {len(names)}")
+    print("All scenarios use correct speaker roles. Synthetic data only.")
     summaries: dict[str, Any] = {}
     with httpx.Client(timeout=httpx.Timeout(90.0, connect=15.0)) as client:
         for model in models:
-            records = []
-            with open(args.output, "a", encoding="utf-8") as output:
-                for name in names:
-                    for sample in range(1, args.samples + 1):
-                        print(f"Running {model} | {name} | sample {sample}/{args.samples}")
-                        result = run_one(client, model, TRANSCRIPTS[name])
-                        record = {
-                            "model": model, "transcript": name, "sample": sample,
-                            "prompt_variant": "short_grounding_v2_role_correct",
-                            **result,
-                        }
-                        output.write(json.dumps(record, ensure_ascii=False) + "\n")
-                        output.flush()
-                        records.append(result)
-                        if args.delay:
-                            time.sleep(args.delay)
-            summaries[model] = aggregate(records)
+            for mode in modes:
+                records = []
+                with open(args.output, "a", encoding="utf-8") as output:
+                    for name in names:
+                        for sample in range(1, args.samples + 1):
+                            print(f"Running {model} | {mode} | {name} | sample {sample}/{args.samples}")
+                            result = run_one(client, model, mode, TRANSCRIPTS[name])
+                            record = {
+                                "model": model, "mode": mode, "transcript": name,
+                                "sample": sample, **result,
+                            }
+                            output.write(json.dumps(record, ensure_ascii=False) + "\n")
+                            output.flush()
+                            records.append(result)
+                            if args.delay:
+                                time.sleep(args.delay)
+                summaries[f"{model} | {mode}"] = aggregate(records)
     Path(args.summary).write_text(
         json.dumps(summaries, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
