@@ -1,0 +1,9 @@
+{
+  "name": "Miora",
+  "short_name": "Miora",
+  "description": "A private space to pause, reflect, and work things through.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf8f2",
+  "theme_color": "#193b39"
+}
