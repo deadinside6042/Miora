@@ -1,0 +1,58 @@
+{
+  "anthropic/claude-haiku-5.5": {
+    "runs": 6,
+    "turns": 24,
+    "json_ok": 22,
+    "bad_quotes": 0,
+    "history_word_flags": 5,
+    "same_move": 8,
+    "high_opener_similarity": 0,
+    "errors": 0,
+    "input_tokens": 11290,
+    "output_tokens": 9875,
+    "reported_cost": 0.006067,
+    "mean_latency_seconds": 2.494
+  },
+  "meta-llama/llama-3.3-70b-instruct": {
+    "runs": 6,
+    "turns": 24,
+    "json_ok": 24,
+    "bad_quotes": 0,
+    "history_word_flags": 0,
+    "same_move": 10,
+    "high_opener_similarity": 0,
+    "errors": 0,
+    "input_tokens": 7178,
+    "output_tokens": 2629,
+    "reported_cost": 0.006518,
+    "mean_latency_seconds": 2.475
+  },
+  "google/gemini-3.8-flash": {
+    "runs": 6,
+    "turns": 24,
+    "json_ok": 23,
+    "bad_quotes": 0,
+    "history_word_flags": 0,
+    "same_move": 15,
+    "high_opener_similarity": 0,
+    "errors": 0,
+    "input_tokens": 7045,
+    "output_tokens": 16449,
+    "reported_cost": 0.066967,
+    "mean_latency_seconds": 5.672
+  },
+  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free": {
+    "runs": 6,
+    "turns": 24,
+    "json_ok": 10,
+    "bad_quotes": 0,
+    "history_word_flags": 0,
+    "same_move": 1,
+    "high_opener_similarity": 1,
+    "errors": 0,
+    "input_tokens": 7461,
+    "output_tokens": 19532,
+    "reported_cost": 0.0,
+    "mean_latency_seconds": 7.04
+  }
+}
