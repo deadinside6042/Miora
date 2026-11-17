@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#193b39">
+  <meta name="description" content="A private space to pause, reflect, and work things through.">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <title>Miora</title>
+  <style>
+    :root{color-scheme:light;--ink:#193b39;--teal:#438f83;--mint:#e6f3ee;--cream:#faf8f2;--peach:#f6e4d9;--muted:#71827d;--line:#e2e9e4;--white:#fff}
+    *{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--cream);color:var(--ink)}
+    body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}button,input,textarea{font:inherit}button{cursor:pointer}
+    .shell{min-height:100dvh;max-width:760px;margin:0 auto;display:flex;flex-direction:column}
+    header{padding:22px 20px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .brand{display:flex;align-items:center;gap:11px}.mark{width:42px;height:42px;border-radius:15px;background:var(--ink);color:#b8e1d3;display:grid;place-items:center;font-size:23px}
+    .brand strong{font-size:20px;letter-spacing:.2px}.brand small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+    .quiet{border:0;background:transparent;color:var(--muted);padding:10px;border-radius:12px;font-size:13px}.quiet:active{background:var(--mint)}
+    main{flex:1;padding:0 16px 18px;display:flex;flex-direction:column}
+    .panel{background:var(--white);border:1px solid var(--line);border-radius:24px;padding:22px;box-shadow:0 8px 30px #193b3909}
+    .login-wrap{margin:auto;width:100%;max-width:430px}.eyebrow{font-size:10px;font-weight:800;letter-spacing:1.7px;color:var(--teal)}
+    h1{font-size:29px;line-height:1.15;margin:9px 0 8px}p{line-height:1.55}.muted{color:var(--muted);font-size:14px}
+    label{display:block;font-size:13px;font-weight:650;margin:18px 0 7px}
+    input,textarea{width:100%;border:1px solid var(--line);background:#fff;border-radius:14px;padding:14px;color:var(--ink);outline:none}
+    input:focus,textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px #438f831c}
+    .primary{border:0;border-radius:15px;background:var(--teal);color:#fff;font-weight:700;padding:15px 18px;width:100%;margin-top:18px;min-height:50px}
+    .primary:disabled{opacity:.55;cursor:wait}.error{color:#a63b35;background:#fff0ed;border-radius:12px;padding:11px 13px;font-size:13px;margin-top:14px}
+    .notice{color:var(--muted);font-size:11px;text-align:center;margin:16px 5px 0;line-height:1.5}
+    .chat-head{padding:8px 5px 16px}.chat-head h1{font-size:25px;margin:5px 0}.chat-head p{margin:0;color:var(--muted);font-size:13px}
+    .messages{display:flex;flex-direction:column;gap:12px;padding:12px 2px 18px;flex:1;overflow-y:auto;min-height:220px}
+    .bubble{max-width:88%;padding:13px 15px;border-radius:19px;font-size:15px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+    .assistant{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:6px}
+    .user{align-self:flex-end;background:var(--ink);color:#fff;border-bottom-right-radius:6px}
+    .typing{color:var(--muted);font-size:13px;padding:5px 10px}
+    .composer{display:flex;gap:9px;align-items:flex-end;padding:10px;background:#fff;border:1px solid var(--line);border-radius:19px}
+    .composer textarea{border:0;resize:none;max-height:130px;min-height:44px;padding:10px 6px;box-shadow:none!important}
+    .send{width:44px;height:44px;flex:0 0 44px;border:0;border-radius:14px;background:var(--teal);color:white;font-size:20px}
+    .send:disabled{opacity:.45}.footer{font-size:10px;text-align:center;color:var(--muted);padding:12px 8px 4px}
+    .toolbar{display:flex;justify-content:space-between;align-items:center;padding:0 2px 9px}.toolbar span{font-size:11px;color:var(--muted)}
+    .hidden{display:none!important}
+    @media(min-width:600px){main{padding:0 28px 24px}.messages{padding:18px 5px}.bubble{max-width:78%}}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="brand"><div class="mark" aria-hidden="true">✿</div><div><strong>Miora</strong><small>A space for you</small></div></div>
+    <button class="quiet hidden" id="signout" type="button">Sign out</button>
+  </header>
+  <main>
+    <section id="login" class="login-wrap panel">
+      <div class="eyebrow">WELCOME</div>
+      <h1>Your space to pause and reflect.</h1>
+      <p class="muted">Sign in with the invitation account you were given. Registration is closed to the public.</p>
+      <form id="loginForm">
+        <label for="email">Email address</label>
+        <input id="email" type="email" autocomplete="username" required maxlength="254" placeholder="you@example.com">
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required maxlength="256" placeholder="Your password">
+        <button class="primary" id="loginButton" type="submit">Sign in</button>
+        <div id="loginError" class="error hidden" role="alert"></div>
+      </form>
+      <p class="notice">Your account and conversations are private to your sign-in. Miora is a wellbeing support tool, not a substitute for professional care.</p>
+    </section>
+    <section id="chatView" class="hidden" style="display:flex;flex:1;flex-direction:column;min-height:0">
+      <div class="chat-head"><div class="eyebrow">A SUPPORTIVE CONVERSATION</div><h1>Talk with Miora</h1><p>A space to pause, reflect, and work things through.</p></div>
+      <div class="toolbar"><span id="accountLabel"></span><button class="quiet" id="newChat" type="button">＋ New conversation</button></div>
+      <div id="messages" class="messages" aria-live="polite" aria-label="Conversation">
+        <div class="bubble assistant">Hi, I’m here with you. What’s on your mind today?</div>
+      </div>
+      <div id="chatError" class="error hidden" role="alert"></div>
+      <form id="composerForm" class="composer">
+        <textarea id="messageInput" rows="1" maxlength="6000" placeholder="Write what's on your mind…" aria-label="Your message"></textarea>
+        <button class="send" id="sendButton" type="submit" aria-label="Send message">↑</button>
+      </form>
+      <div class="footer">Miora can offer support and information, but is not a therapist or emergency service.</div>
+    </section>
+  </main>
+</div>
+<script>
+(() => {
+  "use strict";
+  const API = "https://miora-yjfu.onrender.com";
+  const $ = id => document.getElementById(id);
+  const state = { access: localStorage.getItem("miora_web_access") || "", refresh: localStorage.getItem("miora_web_refresh") || "", conversation: localStorage.getItem("miora_web_conversation") || "", messages: [], busy: false, email: "" };
+  function saveSession(){localStorage.setItem("miora_web_access",state.access);localStorage.setItem("miora_web_refresh",state.refresh)}
+  function clearSession(){state.access="";state.refresh="";state.conversation="";state.messages=[];localStorage.removeItem("miora_web_access");localStorage.removeItem("miora_web_refresh");localStorage.removeItem("miora_web_conversation")}
+  async function api(path, options={}) {
+    const headers={"Content-Type":"application/json",...(options.headers||{})};
+    if(state.access) headers.Authorization="Bearer "+state.access;
+    const response=await fetch(API+path,{...options,headers});
+    let body={};try{body=await response.json()}catch{}
+    if(!response.ok){const error=new Error(body.detail||"Request failed ("+response.status+")");error.status=response.status;throw error}
+    return body;
+  }
+  async function refreshSession(){
+    if(!state.refresh) return false;
+    try{const r=await fetch(API+"/auth/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({refresh_token:state.refresh})});if(!r.ok)return false;const data=await r.json();state.access=data.access_token||"";state.refresh=data.refresh_token||state.refresh;saveSession();return !!state.access}catch{return false}
+  }
+  function showLogin(error=""){ $("login").classList.remove("hidden");$("chatView").classList.add("hidden");$("signout").classList.add("hidden");$("loginError").textContent=error;$("loginError").classList.toggle("hidden",!error); }
+  function showChat(){ $("login").classList.add("hidden");$("chatView").classList.remove("hidden");$("signout").classList.remove("hidden");$("accountLabel").textContent=state.email||"Private account";renderMessages(); }
+  function renderMessages(){
+    const host=$("messages");host.replaceChildren();
+    if(!state.messages.length){const welcome=document.createElement("div");welcome.className="bubble assistant";welcome.textContent="Hi, I’m here with you. What’s on your mind today?";host.append(welcome)}
+    for(const item of state.messages){const el=document.createElement("div");el.className="bubble "+(item.role==="user"?"user":"assistant");el.textContent=item.content;host.append(el)}
+    host.scrollTop=host.scrollHeight;
+  }
+  async function loadHistory(){
+    if(!state.conversation){state.messages=[];renderMessages();return}
+    try{const data=await api("/conversations/"+encodeURIComponent(state.conversation)+"/messages");state.messages=(data.messages||[]).map(m=>({role:m.role,content:m.content}));renderMessages()}
+    catch(e){if(e.status===401&&await refreshSession())return loadHistory();state.messages=[];renderMessages();if(e.status!==404)showChatError("Couldn't load this conversation. You can start a new one.");else{state.conversation="";localStorage.removeItem("miora_web_conversation")}}
+  }
+  function showChatError(message){$("chatError").textContent=message;$("chatError").classList.remove("hidden")}
+  function hideChatError(){$("chatError").classList.add("hidden")}
+  $("loginForm").addEventListener("submit",async event=>{
+    event.preventDefault();$("loginButton").disabled=true;$("loginError").classList.add("hidden");
+    try{const data=await fetch(API+"/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:$("email").value.trim(),password:$("password").value})});const result=await data.json();if(!data.ok)throw new Error(result.detail||"Sign-in failed. Check your email and password.");state.access=result.access_token;state.refresh=result.refresh_token;state.email=$("email").value.trim();saveSession();showChat();await loadHistory()}
+    catch(e){showLogin(e.message||"Couldn't reach Miora. Please try again.")}
+    finally{$("loginButton").disabled=false}
+  });
+  $("composerForm").addEventListener("submit",async event=>{
+    event.preventDefault();const text=$("messageInput").value.trim();if(!text||state.busy)return;
+    hideChatError();state.messages.push({role:"user",content:text});renderMessages();$("messageInput").value="";state.busy=true;$("sendButton").disabled=true;
+    const typing=document.createElement("div");typing.className="typing";typing.textContent="Miora is thinking…";$("messages").append(typing);$("messages").scrollTop=$("messages").scrollHeight;
+    try{
+      let result;
+      try{result=await api("/chat",{method:"POST",body:JSON.stringify({messages:state.messages.slice(-20),conversation_id:state.conversation||null})})}
+      catch(e){if(e.status===401&&await refreshSession())result=await api("/chat",{method:"POST",body:JSON.stringify({messages:state.messages.slice(-20),conversation_id:state.conversation||null})});else throw e}
+      state.conversation=result.conversation_id||state.conversation;if(state.conversation)localStorage.setItem("miora_web_conversation",state.conversation);
+      state.messages.push({role:"assistant",content:result.reply||"I wasn't able to form a response. Please try again."});renderMessages();
+    }catch(e){state.messages.pop();renderMessages();showChatError(e.status===502?"Miora's AI service is temporarily unavailable. Please try again later.":"Couldn't send your message: "+e.message)}
+    finally{state.busy=false;$("sendButton").disabled=false;$("messageInput").focus()}
+  });
+  $("messageInput").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("composerForm").requestSubmit()}});
+  $("newChat").addEventListener("click",()=>{if(state.busy)return;state.conversation="";state.messages=[];localStorage.removeItem("miora_web_conversation");hideChatError();renderMessages()});
+  $("signout").addEventListener("click",()=>{clearSession();state.email="";$("password").value="";showLogin()});
+  async function start(){
+    if(!state.access){showLogin();return}
+    if(state.refresh){const ok=await refreshSession();if(!ok){clearSession();showLogin("Your session expired. Please sign in again.");return}}
+    try{const profile=await api("/profile");state.email=profile.email||""}catch(e){if(e.status===401){clearSession();showLogin("Please sign in again.");return}}
+    showChat();await loadHistory();
+  }
+  if("serviceWorker" in navigator && location.protocol==="https:"){navigator.serviceWorker.register("/sw.js").catch(()=>{})}
+  start();
+})();
+</script>
+</body>
+</html>
